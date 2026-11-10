@@ -2,11 +2,12 @@ package cache
 
 import "hash/fnv"
 
-// Hash function retunr the 64-bit FNV-1a hash of the key
-// The same key will always produce the same hash value
+// hash returns the 64-bit FNV-1a hash of the key.
+// The same key always produces the same hash value.
 func hash(key string) uint64 {
 	hasher := fnv.New64a()
-	hasher.Write([]byte(key))
+	// FNV's Write method never returns an error.
+	_, _ = hasher.Write([]byte(key))
 	return hasher.Sum64()
 }
 
