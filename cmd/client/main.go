@@ -10,7 +10,6 @@ import (
 )
 
 func main() {
-
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -24,15 +23,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Printf("closing response body: %v", err)
-		}
-	}()
 
 	body, err := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+
 	if err != nil {
 		log.Fatal(err)
+	}
+	if closeErr != nil {
+		log.Printf("closing response body: %v", closeErr)
 	}
 
 	fmt.Println(resp.Status)
