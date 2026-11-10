@@ -35,3 +35,5 @@ go.work.sum
 
 # Local build output
 /bin/
+
+.DS_Store
