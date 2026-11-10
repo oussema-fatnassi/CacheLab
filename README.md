@@ -76,3 +76,21 @@ go test -v -count=1 ./internal/cache -run '^TestPrintHash$'
 ```
 
 Le test affiche le hash en décimal et en hexadécimal, ainsi que l’index du bucket. Il permet d’observer le résultat.
+
+## Gestion des collisions
+
+La table calcule l’index d’un bucket avec `hash(key) % nombreDeBuckets`. Plusieurs clés différentes peuvent obtenir le même index : c’est une collision.
+
+Les collisions sont gérées par **chaînage séparé** : chaque bucket pointe vers une liste d’entrées `CacheEntry`, reliées par le champ `next`. Une nouvelle entrée est ajoutée en tête de liste après vérification de l’absence de doublon.
+
+```text
+bucket → country: France → city: Paris → name: Test → nil
+```
+
+La lecture et la mise à jour parcourent la liste en comparant les clés. La suppression ajuste les pointeurs pour retirer uniquement l’entrée correspondante, sans perdre les autres. Une clé déjà présente est refusée avec `ErrKeyExists` ; une collision entre deux clés différentes est acceptée.
+
+Pour vérifier ce comportement, les tests utilisent un seul bucket et y stockent trois clés. Ils contrôlent la lecture de chaque valeur et la mise à jour ou suppression en début, milieu et fin de liste :
+
+```bash
+go test -v -count=1 ./internal/cache -run '^TestHashTableCollision$'
+```
