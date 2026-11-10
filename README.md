@@ -18,6 +18,8 @@ Au premier lancement, copier `.env.example` vers `.env`, puis modifier `PORT` si
 cp .env.example .env
 ```
 
+
+
 ### Lancer le serveur
 
 Dans un premier terminal :
@@ -64,3 +66,13 @@ docker compose up --build
 Compose utilise le port défini dans `.env`, ou 8080 par défaut. Le service est accessible sur ce même port depuis la machine hôte.
 
 Autres commandes : `make build` construit `bin/cachelab`, `make test` exécute les tests avec le détecteur de courses, `make lint` lance `go vet`, `gofmt -w .` formate les fichiers Go et `make cover` affiche la couverture.
+
+## Tester le hachage
+
+Modifier la chaîne `key` dans `TestPrintHash`, dans `internal/cache/hash_test.go`, puis lancer depuis la racine :
+
+```bash
+go test -v -count=1 ./internal/cache -run '^TestPrintHash$'
+```
+
+Le test affiche le hash en décimal et en hexadécimal, ainsi que l’index du bucket. Il permet d’observer le résultat.
