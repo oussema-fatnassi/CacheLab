@@ -1,14 +1,5 @@
 package cache
 
-import "errors"
-
-var (
-	ErrInvalidKey    = errors.New("invalid key")
-	ErrValueTooLarge = errors.New("value too large")
-	ErrKeyExists     = errors.New("key already exists")
-	ErrNotFound      = errors.New("key not found")
-)
-
 // Table is the contract used by CacheService for storage operations.
 type Table interface {
 	Create(key, value string) error
