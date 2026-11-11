@@ -1,12 +1,5 @@
 package cache
 
-import "errors"
-
-var (
-	ErrKeyExists = errors.New("key already exists")
-	ErrNotFound  = errors.New("key not found")
-)
-
 // CacheEntry stores a key/value pair.
 // next links entries that share the same bucket.
 type CacheEntry struct {
