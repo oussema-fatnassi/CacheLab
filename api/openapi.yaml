@@ -4,7 +4,8 @@ info:
   version: 0.1.0
   description: |
     Cache clé/valeur en mémoire.
-    Les erreurs sont renvoyées en texte brut pour l'instant (format JSON commun prévu dans CL-30).
+    Toutes les erreurs utilisent le même format JSON : `{"error": "message"}`.
+    Une erreur inattendue renvoie 500 avec un message générique, sans détail interne.
 servers:
   - url: /
     description: Serveur courant
@@ -32,37 +33,31 @@ paths:
         '400':
           description: JSON invalide (mal formé, champ manquant, inconnu, null ou de mauvais type, données après l'objet), clé vide ou trop longue, ou valeur trop volumineuse.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/ErrorResponse'
               examples:
                 invalidJson:
-                  value: invalid JSON body
+                  value:
+                    error: invalid JSON body
                 invalidKey:
-                  value: invalid key
+                  value:
+                    error: invalid key
                 valueTooLarge:
-                  value: value too large
+                  value:
+                    error: value too large
         '409':
           description: La clé existe déjà. La valeur d'origine est conservée.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-              example: key already exists
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: key already exists
         '413':
-          description: Corps de requête plus grand que MAX_BODY_BYTES (8 388 608 octets par défaut).
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: request body too large
+          $ref: '#/components/responses/BodyTooLarge'
         '500':
-          description: Erreur interne de stockage. Le message reste générique.
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: internal server error
+          $ref: '#/components/responses/InternalError'
 
   /keys/{key}:
     get:
@@ -91,19 +86,17 @@ paths:
                 key: name
                 value: Test
         '400':
-          description: Clé trop longue.
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: invalid key
+          $ref: '#/components/responses/InvalidKey'
         '404':
           description: Clé absente.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-              example: key not found
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: key not found
+        '500':
+          $ref: '#/components/responses/InternalError'
     put:
       summary: Remplacer la valeur d'une clé existante
       description: |
@@ -132,30 +125,31 @@ paths:
         '400':
           description: JSON invalide (mal formé, champ manquant, inconnu, null ou de mauvais type, données après l'objet), clé trop longue ou valeur trop volumineuse.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/ErrorResponse'
               examples:
                 invalidJson:
-                  value: invalid JSON body
+                  value:
+                    error: invalid JSON body
                 invalidKey:
-                  value: invalid key
+                  value:
+                    error: invalid key
                 valueTooLarge:
-                  value: value too large
+                  value:
+                    error: value too large
         '404':
           description: Clé absente. Aucune entrée n'est créée.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-              example: key not found
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: key not found
         '413':
-          description: Corps de requête plus grand que MAX_BODY_BYTES (8 388 608 octets par défaut).
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: request body too large
+          $ref: '#/components/responses/BodyTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalError'
     delete:
       summary: Supprimer une clé
       description: |
@@ -175,22 +169,54 @@ paths:
         '204':
           description: Clé supprimée. La réponse n'a pas de corps.
         '400':
-          description: Clé trop longue.
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: invalid key
+          $ref: '#/components/responses/InvalidKey'
         '404':
           description: Clé absente, déjà supprimée ou jamais créée.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-              example: key not found
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: key not found
+        '500':
+          $ref: '#/components/responses/InternalError'
 
 components:
+  responses:
+    InvalidKey:
+      description: Clé trop longue.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: invalid key
+    BodyTooLarge:
+      description: Corps de requête plus grand que MAX_BODY_BYTES (8 388 608 octets par défaut).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: request body too large
+    InternalError:
+      description: Erreur inattendue. Le message reste générique ; le détail n'apparaît que dans les logs du serveur.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: internal server error
   schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Message d'erreur public, sans valeur stockée ni détail interne.
+          example: key not found
     CreateKeyRequest:
       type: object
       additionalProperties: false
