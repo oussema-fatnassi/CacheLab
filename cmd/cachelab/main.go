@@ -56,13 +56,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	_ = app // The CRUD handlers will use the service.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := fmt.Fprint(w, "Hello, World!"); err != nil {
 			log.Printf("writing response: %v", err)
 		}
 	})
+	mux.HandleFunc("POST /keys", handleCreate(app.service))
 
 	log.Printf("Listening on %s", address())
 	log.Fatal(http.ListenAndServe(address(), mux))
