@@ -79,6 +79,24 @@ Swagger UI permet de consulter et de tester les routes directement dans le navig
 
 L'interface Swagger UI charge ses fichiers JavaScript et CSS depuis un CDN : une connexion Internet est nécessaire pour l'afficher. Après modification de `api/openapi.yaml`, reconstruire et redémarrer le serveur pour intégrer la nouvelle spécification.
 
+### Format des erreurs
+
+Toutes les réponses d'erreur ont le même corps JSON, avec l'en-tête `Content-Type: application/json` :
+
+```json
+{"error": "key not found"}
+```
+
+| Code | Cas | Message |
+| --- | --- | --- |
+| 400 | JSON invalide, clé vide ou trop longue, valeur trop volumineuse | `invalid JSON body`, `invalid request body`, `invalid key`, `value too large` |
+| 404 | Clé absente | `key not found` |
+| 409 | Clé déjà présente lors d'une création | `key already exists` |
+| 413 | Corps plus grand que `MAX_BODY_BYTES` | `request body too large` |
+| 500 | Erreur inattendue, y compris une panic dans un handler | `internal server error` |
+
+Une erreur `500` ne contient jamais de détail interne : la cause réelle est écrite uniquement dans les logs du serveur, qui continue de traiter les requêtes suivantes.
+
 ## Tester le hachage
 
 Modifier la chaîne `key` dans `TestPrintHash`, dans `internal/cache/hash_test.go`, puis lancer depuis la racine :
