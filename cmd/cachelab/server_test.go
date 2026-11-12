@@ -212,3 +212,25 @@ func TestServerReadRoute(t *testing.T) {
 		t.Fatalf("missing key status = %d; want 404", response.Code)
 	}
 }
+
+func TestServerUpdateRoute(t *testing.T) {
+	app, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.service.Create("name", "Test"); err != nil {
+		t.Fatal(err)
+	}
+	server := newCacheServer(serverConfig{maxBodyBytes: 64}, app.service)
+	response := httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPut, "/keys/name", strings.NewReader(`{"value":"Alice"}`)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d; want 200", response.Code)
+	}
+	// Integration: reading the key afterwards returns the new value.
+	response = httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/keys/name", nil))
+	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != `{"key":"name","value":"Alice"}` {
+		t.Fatalf("response = %d %q", response.Code, response.Body.String())
+	}
+}
