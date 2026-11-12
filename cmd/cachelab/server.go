@@ -89,13 +89,28 @@ func limitBody(next http.Handler, limit int64) http.Handler {
 		if err != nil {
 			var tooLarge *http.MaxBytesError
 			if errors.As(err, &tooLarge) {
-				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
 			} else {
-				http.Error(w, "invalid request body", http.StatusBadRequest)
+				writeError(w, http.StatusBadRequest, "invalid request body")
 			}
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
+		next.ServeHTTP(w, r)
+	})
+}
+
+// recoverPanics turns a panic in a handler into a generic 500 response,
+// so the client gets an answer and the server keeps serving other requests.
+func recoverPanics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if value := recover(); value != nil {
+				// The panic details stay in the server logs.
+				log.Printf("panic while serving %s %s: %v", r.Method, r.URL.Path, value)
+				writeError(w, http.StatusInternalServerError, "internal server error")
+			}
+		}()
 		next.ServeHTTP(w, r)
 	})
 }
@@ -106,7 +121,7 @@ type CacheServer struct {
 }
 
 func newCacheServer(config serverConfig, service *cache.CacheService) *CacheServer {
-	return &CacheServer{service: service, httpServer: &http.Server{Addr: config.address, Handler: registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service), update: handleUpdate(service), delete: handleDelete(service)}, config.maxBodyBytes)}}
+	return &CacheServer{service: service, httpServer: &http.Server{Addr: config.address, Handler: recoverPanics(registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service), update: handleUpdate(service), delete: handleDelete(service)}, config.maxBodyBytes))}}
 }
 func (s *CacheServer) Serve(listener net.Listener) error {
 	err := s.httpServer.Serve(listener)
