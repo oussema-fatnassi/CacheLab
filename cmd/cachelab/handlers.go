@@ -94,3 +94,20 @@ func handleUpdate(service *cache.CacheService) http.HandlerFunc {
 		}
 	}
 }
+
+// handleDelete removes an existing key and answers without a body.
+func handleDelete(service *cache.CacheService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := service.Delete(r.PathValue("key"))
+		switch {
+		case err == nil:
+			w.WriteHeader(http.StatusNoContent)
+		case errors.Is(err, cache.ErrNotFound):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case errors.Is(err, cache.ErrInvalidKey):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+	}
+}

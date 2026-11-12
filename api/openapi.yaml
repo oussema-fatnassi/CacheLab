@@ -156,6 +156,38 @@ paths:
               schema:
                 type: string
               example: request body too large
+    delete:
+      summary: Supprimer une clé
+      description: |
+        Supprime une clé existante, par exemple pour invalider une donnée après une modification en base.
+        Une clé déjà supprimée ou qui n'a jamais existé renvoie 404 (convention à confirmer avec le PO).
+        Ticket : CL-28 (API-04).
+      operationId: deleteKey
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Clé à supprimer, encodée pour l'URL si besoin.
+          schema:
+            type: string
+          example: name
+      responses:
+        '204':
+          description: Clé supprimée. La réponse n'a pas de corps.
+        '400':
+          description: Clé trop longue.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: invalid key
+        '404':
+          description: Clé absente, déjà supprimée ou jamais créée.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: key not found
 
 components:
   schemas:

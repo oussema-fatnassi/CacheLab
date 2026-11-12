@@ -234,3 +234,25 @@ func TestServerUpdateRoute(t *testing.T) {
 		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
 }
+
+func TestServerDeleteRoute(t *testing.T) {
+	app, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.service.Create("name", "Test"); err != nil {
+		t.Fatal(err)
+	}
+	server := newCacheServer(serverConfig{maxBodyBytes: 64}, app.service)
+	response := httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/keys/name", nil))
+	if response.Code != http.StatusNoContent || response.Body.Len() != 0 {
+		t.Fatalf("response = %d %q; want 204 with no body", response.Code, response.Body.String())
+	}
+	// Integration: reading the key afterwards reports it as absent.
+	response = httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/keys/name", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("read after delete status = %d; want 404", response.Code)
+	}
+}

@@ -92,6 +92,7 @@ func newKeysMux(service *cache.CacheService) *http.ServeMux {
 	mux.HandleFunc("POST /keys", handleCreate(service))
 	mux.HandleFunc("GET /keys/{key}", handleRead(service))
 	mux.HandleFunc("PUT /keys/{key}", handleUpdate(service))
+	mux.HandleFunc("DELETE /keys/{key}", handleDelete(service))
 	return mux
 }
 
@@ -226,5 +227,49 @@ func TestHandleUpdateErrors(t *testing.T) {
 				t.Fatalf("Read = (%q, %v); want (%q, nil)", got, err, "Test")
 			}
 		})
+	}
+}
+
+func TestHandleDeleteRemovesOnlyTargetKey(t *testing.T) {
+	service := cache.NewCacheService(cache.NewHashTable(16), 20, 20)
+	// The values are stored directly through the service, without POST.
+	for _, key := range []string{"a", "b", "c"} {
+		if err := service.Create(key, "value "+key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mux := newKeysMux(service)
+
+	recorder := send(mux, http.MethodDelete, "/keys/b", "")
+	if recorder.Code != http.StatusNoContent || recorder.Body.Len() != 0 {
+		t.Fatalf("response = %d %q; want %d with no body", recorder.Code, recorder.Body.String(), http.StatusNoContent)
+	}
+	if recorder := send(mux, http.MethodGet, "/keys/b", ""); recorder.Code != http.StatusNotFound {
+		t.Fatalf("deleted key is still readable: status = %d", recorder.Code)
+	}
+
+	// The other keys keep their values.
+	for _, key := range []string{"a", "c"} {
+		if got, err := service.Read(key); err != nil || got != "value "+key {
+			t.Fatalf("Read(%q) = (%q, %v); want (%q, nil)", key, got, err, "value "+key)
+		}
+	}
+}
+
+func TestHandleDeleteMissingKey(t *testing.T) {
+	service := cache.NewCacheService(cache.NewHashTable(16), 20, 20)
+	if err := service.Create("name", "Test"); err != nil {
+		t.Fatal(err)
+	}
+	mux := newKeysMux(service)
+
+	if recorder := send(mux, http.MethodDelete, "/keys/name", ""); recorder.Code != http.StatusNoContent {
+		t.Fatalf("first delete status = %d; want %d", recorder.Code, http.StatusNoContent)
+	}
+	// A key deleted by a previous call and a key that never existed are both absent.
+	for _, path := range []string{"/keys/name", "/keys/never"} {
+		if recorder := send(mux, http.MethodDelete, path, ""); recorder.Code != http.StatusNotFound {
+			t.Fatalf("DELETE %s status = %d; want %d", path, recorder.Code, http.StatusNotFound)
+		}
 	}
 }
