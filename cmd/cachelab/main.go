@@ -63,6 +63,7 @@ func main() {
 		}
 	})
 	mux.HandleFunc("POST /keys", handleCreate(app.service))
+	mux.HandleFunc("GET /keys/{key}", handleRead(app.service))
 
 	log.Printf("Listening on %s", address())
 	log.Fatal(http.ListenAndServe(address(), mux))
