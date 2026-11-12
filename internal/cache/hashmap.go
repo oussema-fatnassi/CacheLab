@@ -1,5 +1,7 @@
 package cache
 
+import "math"
+
 // CacheEntry stores a key/value pair.
 // next links entries that share the same bucket.
 type CacheEntry struct {
@@ -10,18 +12,33 @@ type CacheEntry struct {
 
 // HashTable stores entries using separate chaining for collisions.
 type HashTable struct {
-	buckets []*CacheEntry
-	size    int
+	buckets       []*CacheEntry
+	size          int
+	maxLoadFactor float64
+	growthFactor  int
 }
 
-// NewHashTable creates an empty table with a positive bucket count.
+// NewHashTable uses a load threshold of 0.75 and doubles capacity when exceeded.
 func NewHashTable(bucketCount int) *HashTable {
+	return NewHashTableWithConfig(bucketCount, 0.75, 2)
+}
+
+// NewHashTableWithConfig creates a table with configurable growth settings.
+func NewHashTableWithConfig(bucketCount int, maxLoadFactor float64, growthFactor int) *HashTable {
 	if bucketCount <= 0 {
 		panic("bucketCount must be greater than 0")
 	}
+	if !(maxLoadFactor > 0) || math.IsInf(maxLoadFactor, 0) {
+		panic("maxLoadFactor must be finite and greater than 0")
+	}
+	if growthFactor < 2 {
+		panic("growthFactor must be at least 2")
+	}
 
 	return &HashTable{
-		buckets: make([]*CacheEntry, bucketCount),
+		buckets:       make([]*CacheEntry, bucketCount),
+		maxLoadFactor: maxLoadFactor,
+		growthFactor:  growthFactor,
 	}
 }
 
@@ -43,7 +60,28 @@ func (table *HashTable) Create(key, value string) error {
 	}
 
 	table.size++
+	if float64(table.size)/float64(len(table.buckets)) > table.maxLoadFactor {
+		table.resize()
+	}
 	return nil
+}
+
+// resize redistributes existing entries without changing their values or size.
+func (table *HashTable) resize() {
+	buckets := make([]*CacheEntry, len(table.buckets)*table.growthFactor)
+
+	for _, entry := range table.buckets {
+		for entry != nil {
+			// Save the old link before moving this entry into its new chain.
+			next := entry.next
+			index := bucketIndex(entry.key, len(buckets))
+			entry.next = buckets[index]
+			buckets[index] = entry
+			entry = next
+		}
+	}
+
+	table.buckets = buckets
 }
 
 // Read returns the value and whether the key exists.
