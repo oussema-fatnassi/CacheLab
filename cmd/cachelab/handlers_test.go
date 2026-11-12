@@ -91,6 +91,7 @@ func newKeysMux(service *cache.CacheService) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /keys", handleCreate(service))
 	mux.HandleFunc("GET /keys/{key}", handleRead(service))
+	mux.HandleFunc("PUT /keys/{key}", handleUpdate(service))
 	return mux
 }
 
@@ -169,5 +170,61 @@ func TestCreateThenReadIntegration(t *testing.T) {
 	}
 	if got := decodeRead(t, recorder); got.Value != "Test" {
 		t.Fatalf("value = %q; want %q", got.Value, "Test")
+	}
+}
+
+func TestHandleUpdateReplacesOnlyTargetValue(t *testing.T) {
+	service := cache.NewCacheService(cache.NewHashTable(16), 20, 20)
+	// The values are stored directly through the service, without POST.
+	for _, key := range []string{"a", "b", "c"} {
+		if err := service.Create(key, "old "+key); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	recorder := send(newKeysMux(service), http.MethodPut, "/keys/b", `{"value": "new b"}`)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d; want %d", recorder.Code, http.StatusOK)
+	}
+
+	// Only the target key changes; the other values are kept.
+	want := map[string]string{"a": "old a", "b": "new b", "c": "old c"}
+	for key, value := range want {
+		if got, err := service.Read(key); err != nil || got != value {
+			t.Fatalf("Read(%q) = (%q, %v); want (%q, nil)", key, got, err, value)
+		}
+	}
+}
+
+func TestHandleUpdateErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		body string
+		want int
+	}{
+		{"missing key", "/keys/missing", `{"value": "new"}`, http.StatusNotFound},
+		{"malformed JSON", "/keys/name", `{"value":`, http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := cache.NewCacheService(cache.NewHashTable(16), 20, 20)
+			if err := service.Create("name", "Test"); err != nil {
+				t.Fatal(err)
+			}
+
+			recorder := send(newKeysMux(service), http.MethodPut, tt.path, tt.body)
+			if recorder.Code != tt.want {
+				t.Fatalf("status = %d; want %d", recorder.Code, tt.want)
+			}
+
+			// A failed update neither creates an entry nor changes the stored value.
+			if _, err := service.Read("missing"); !errors.Is(err, cache.ErrNotFound) {
+				t.Fatalf("missing key was created: %v", err)
+			}
+			if got, err := service.Read("name"); err != nil || got != "Test" {
+				t.Fatalf("Read = (%q, %v); want (%q, nil)", got, err, "Test")
+			}
+		})
 	}
 }
