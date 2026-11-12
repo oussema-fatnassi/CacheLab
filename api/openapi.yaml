@@ -57,6 +57,47 @@ paths:
                 type: string
               example: internal server error
 
+  /keys/{key}:
+    get:
+      summary: Lire la valeur d'une clé
+      description: |
+        Renvoie la valeur exacte associée à la clé.
+        Une clé absente renvoie 404 : le cache n'interroge jamais la base de données métier.
+        Ticket : CL-26 (API-02).
+      operationId: readKey
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Clé à lire, encodée pour l'URL si besoin.
+          schema:
+            type: string
+          example: name
+      responses:
+        '200':
+          description: Clé trouvée.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadKeyResponse'
+              example:
+                key: name
+                value: Test
+        '400':
+          description: Clé trop longue.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: invalid key
+        '404':
+          description: Clé absente.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: key not found
+
 components:
   schemas:
     CreateKeyRequest:
@@ -72,4 +113,17 @@ components:
         value:
           type: string
           description: Valeur de MAX_VALUE_BYTES octets au maximum (1 048 576 par défaut). Une valeur vide est acceptée.
+          example: Test
+    ReadKeyResponse:
+      type: object
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          example: name
+        value:
+          type: string
+          description: Valeur exacte, identique à celle enregistrée.
           example: Test
