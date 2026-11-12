@@ -27,7 +27,7 @@ cp .env.example .env
 Dans un premier terminal :
 
 ```bash
-make run
+make server
 ```
 
 Le serveur écoute sur le port défini dans `.env`, ou sur `http://localhost:8080` par défaut. La route `/` répond avec `Hello, World!`. Garder ce terminal ouvert ; `Ctrl+C` arrête le serveur.
@@ -47,7 +47,7 @@ Le client envoie une requête GET sur `/`, affiche le statut HTTP et le contenu 
 Hello, World!
 ```
 
-Les commandes `make run` et `make client` chargent toutes deux `.env` : le client utilise donc le même port que le serveur. Par exemple, avec `PORT=1111`, il contacte `http://localhost:1111/`.
+Les commandes `make server` et `make client` chargent toutes deux `.env` : le client utilise donc le même port que le serveur. Par exemple, avec `PORT=1111`, il contacte `http://localhost:1111/`.
 
 Un lancement direct avec `go run` ne charge pas automatiquement `.env`. Depuis `cmd/client`, fournir le port explicitement si nécessaire :
 
