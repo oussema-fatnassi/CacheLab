@@ -3,5 +3,8 @@ services:
     build: .
     environment:
       PORT: ${PORT:-8080}
+      CACHE_BUCKET_COUNT: ${CACHE_BUCKET_COUNT:-16}
+      MAX_KEY_BYTES: ${MAX_KEY_BYTES:-256}
+      MAX_VALUE_BYTES: ${MAX_VALUE_BYTES:-1048576}
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
