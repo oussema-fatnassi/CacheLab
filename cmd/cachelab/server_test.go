@@ -256,3 +256,19 @@ func TestServerDeleteRoute(t *testing.T) {
 		t.Fatalf("read after delete status = %d; want 404", response.Code)
 	}
 }
+
+func TestSwaggerDocumentation(t *testing.T) {
+	mux := registerRoutes(routeHandlers{}, 1024)
+	for _, tc := range []struct{ path, content string }{
+		{"/swagger/", "SwaggerUIBundle"},
+		{"/swagger/openapi.yaml", "openapi: 3.0.3"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), tc.content) {
+				t.Fatalf("GET %s: status %d, body %q", tc.path, w.Code, w.Body.String())
+			}
+		})
+	}
+}

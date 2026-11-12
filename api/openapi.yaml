@@ -6,8 +6,8 @@ info:
     Cache clé/valeur en mémoire.
     Les erreurs sont renvoyées en texte brut pour l'instant (format JSON commun prévu dans CL-30).
 servers:
-  - url: http://localhost:8080
-    description: Serveur local (port défini par PORT)
+  - url: /
+    description: Serveur courant
 
 paths:
   /keys:
