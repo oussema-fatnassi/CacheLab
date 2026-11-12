@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/oussema-fatnassi/CacheLab/internal/cache"
@@ -10,6 +11,12 @@ import (
 
 // createRequest is the JSON body expected by POST /keys.
 type createRequest struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// readResponse is the JSON body returned by GET /keys/{key}.
+type readResponse struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
@@ -33,6 +40,28 @@ func handleCreate(service *cache.CacheService) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		default:
 			// Any other storage error must never be reported as a success.
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+	}
+}
+
+// handleRead returns the value stored for the key given in the URL.
+func handleRead(service *cache.CacheService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := r.PathValue("key")
+
+		value, err := service.Read(key)
+		switch {
+		case err == nil:
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(readResponse{Key: key, Value: value}); err != nil {
+				log.Printf("writing response: %v", err)
+			}
+		case errors.Is(err, cache.ErrNotFound):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case errors.Is(err, cache.ErrInvalidKey):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 		}
 	}
