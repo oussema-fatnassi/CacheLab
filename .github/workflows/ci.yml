@@ -25,6 +25,8 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+      - name: Test with race detector
+        run: go test -race -count=1 ./...
       - name: Vet
         run: go vet ./...
       - name: Lint

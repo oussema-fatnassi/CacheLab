@@ -97,6 +97,18 @@ Pour vérifier ce comportement, les tests utilisent un seul bucket et un seuil d
 go test -v -count=1 ./internal/cache -run '^TestHashTableCollision$'
 ```
 
+## Accès concurrents
+
+Un `sync.Mutex` protège chaque opération CRUD de la HashTable. Une seule opération peut accéder à la table à la fois, y compris les lectures. La vérification d’un doublon et son insertion sont réalisées sous le même verrou.
+
+Le redimensionnement utilise le verrou déjà pris par `Create` : les autres opérations attendent la fin de la redistribution des entrées. Une HashTable ne doit pas être copiée après sa première utilisation ; utiliser le pointeur retourné par son constructeur.
+
+Les tests vérifient deux créations simultanées de la même clé, des lectures pendant les mises à jour et un mélange de CRUD avec collisions et redimensionnements. La CI exécute également les tests avec le détecteur de courses :
+
+```bash
+go test -race -v -count=1 ./internal/cache -run '^TestHashTableConcurrent'
+```
+
 ## Redimensionnement automatique
 
 Après une création, si le facteur de charge `size / nombreDeBuckets` dépasse **0,75**, la table double son nombre de buckets. Avec 4 buckets, 3 entrées ne déclenchent aucun changement ; la quatrième fait passer la capacité à 8 buckets.

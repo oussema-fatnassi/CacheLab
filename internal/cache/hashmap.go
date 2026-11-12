@@ -1,6 +1,9 @@
 package cache
 
-import "math"
+import (
+	"math"
+	"sync"
+)
 
 // CacheEntry stores a key/value pair.
 // next links entries that share the same bucket.
@@ -11,7 +14,9 @@ type CacheEntry struct {
 }
 
 // HashTable stores entries using separate chaining for collisions.
+// CRUD operations share one mutex. Do not copy a HashTable after first use.
 type HashTable struct {
+	mu            sync.Mutex
 	buckets       []*CacheEntry
 	size          int
 	maxLoadFactor float64
@@ -45,6 +50,9 @@ func NewHashTableWithConfig(bucketCount int, maxLoadFactor float64, growthFactor
 // Create inserts a new entry.
 // It returns ErrKeyExists if the key already exists.
 func (table *HashTable) Create(key, value string) error {
+	table.mu.Lock()
+	defer table.mu.Unlock()
+
 	index := bucketIndex(key, len(table.buckets))
 
 	for entry := table.buckets[index]; entry != nil; entry = entry.next {
@@ -67,6 +75,7 @@ func (table *HashTable) Create(key, value string) error {
 }
 
 // resize redistributes existing entries without changing their values or size.
+// The caller must hold table.mu; this helper does not lock again.
 func (table *HashTable) resize() {
 	buckets := make([]*CacheEntry, len(table.buckets)*table.growthFactor)
 
@@ -87,6 +96,9 @@ func (table *HashTable) resize() {
 // Read returns the value and whether the key exists.
 // CacheService translates false into ErrNotFound.
 func (table *HashTable) Read(key string) (string, bool) {
+	table.mu.Lock()
+	defer table.mu.Unlock()
+
 	index := bucketIndex(key, len(table.buckets))
 
 	for entry := table.buckets[index]; entry != nil; entry = entry.next {
@@ -101,6 +113,9 @@ func (table *HashTable) Read(key string) (string, bool) {
 // Update replaces an existing entry's value.
 // It returns ErrNotFound if the key does not exist.
 func (table *HashTable) Update(key, value string) error {
+	table.mu.Lock()
+	defer table.mu.Unlock()
+
 	index := bucketIndex(key, len(table.buckets))
 
 	for entry := table.buckets[index]; entry != nil; entry = entry.next {
@@ -116,6 +131,9 @@ func (table *HashTable) Update(key, value string) error {
 // Delete removes an entry and reports whether it existed.
 // CacheService translates false into ErrNotFound.
 func (table *HashTable) Delete(key string) bool {
+	table.mu.Lock()
+	defer table.mu.Unlock()
+
 	index := bucketIndex(key, len(table.buckets))
 
 	var previous *CacheEntry
