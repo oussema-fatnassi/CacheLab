@@ -176,3 +176,24 @@ func TestServerCreateRoute(t *testing.T) {
 		t.Fatalf("oversized status = %d; want 413", response.Code)
 	}
 }
+
+func TestServerReadRoute(t *testing.T) {
+	app, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.service.Create("name", "Test"); err != nil {
+		t.Fatal(err)
+	}
+	server := newCacheServer(serverConfig{maxBodyBytes: 64}, app.service)
+	response := httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/keys/name", nil))
+	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != `{"key":"name","value":"Test"}` {
+		t.Fatalf("response = %d %q", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/keys/missing", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("missing key status = %d; want 404", response.Code)
+	}
+}
