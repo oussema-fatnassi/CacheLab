@@ -1,18 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 
 	"github.com/oussema-fatnassi/CacheLab/internal/cache"
 )
 
-type application struct {
-	service *cache.CacheService
-}
+type application struct{ service *cache.CacheService }
 
 func positiveSetting(name string, fallback int) (int, error) {
 	value := os.Getenv(name)
@@ -43,28 +43,43 @@ func newApplication() (*application, error) {
 	return &application{service: cache.NewCacheService(table, maxKeyBytes, maxValueBytes)}, nil
 }
 
-func address() string {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	return ":" + port
-}
-
 func main() {
+	config, err := loadServerConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
 	app, err := newApplication()
 	if err != nil {
 		log.Fatal(err)
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := fmt.Fprint(w, "Hello, World!"); err != nil {
-			log.Printf("writing response: %v", err)
-		}
-	})
-	mux.HandleFunc("POST /keys", handleCreate(app.service))
-	mux.HandleFunc("GET /keys/{key}", handleRead(app.service))
+	server := newCacheServer(config, app.service)
 
-	log.Printf("Listening on %s", address())
-	log.Fatal(http.ListenAndServe(address(), mux))
+	// Le contexte est annulé à la réception de Ctrl+C ou de SIGTERM.
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// L'écoute s'exécute en parallèle pour pouvoir attendre aussi un signal.
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- server.ListenAndServe() }()
+	log.Printf("Listening on %s", config.address)
+
+	select {
+	case err := <-serverDone:
+		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	case <-signalCtx.Done():
+	}
+
+	stop()
+	// Laisser les requêtes en cours se terminer dans le délai configuré.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.shutdownTimeout)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("shutdown: %v", err)
+	}
+	if err := <-serverDone; err != nil {
+		log.Fatal(err)
+	}
 }
