@@ -153,3 +153,26 @@ func TestServerKeepsExistingRootHandlerWithoutCRUDHandlers(t *testing.T) {
 		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
 }
+
+func TestServerCreateRoute(t *testing.T) {
+	app, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := newCacheServer(serverConfig{maxBodyBytes: 64}, app.service)
+	request := httptest.NewRequest(http.MethodPost, "/keys", strings.NewReader(`{"key":"name","value":"Test"}`))
+	response := httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d; want 201", response.Code)
+	}
+	if value, err := app.service.Read("name"); err != nil || value != "Test" {
+		t.Fatalf("Read = %q, %v", value, err)
+	}
+	request = httptest.NewRequest(http.MethodPost, "/keys", strings.NewReader(strings.Repeat("x", 65)))
+	response = httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized status = %d; want 413", response.Code)
+	}
+}
