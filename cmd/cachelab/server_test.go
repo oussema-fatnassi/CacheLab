@@ -61,7 +61,13 @@ func (w *responseRecorder) Write(p []byte) (int, error) {
 
 func TestServerShutdownWaitsForRequests(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(started); <-release; io.WriteString(w, "done") })
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release
+		if _, err := io.WriteString(w, "done"); err != nil {
+			t.Errorf("writing response: %v", err)
+		}
+	})
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +79,7 @@ func TestServerShutdownWaitsForRequests(t *testing.T) {
 	go func() {
 		r, e := http.Get("http://" + listener.Addr().String())
 		if e == nil {
-			r.Body.Close()
+			e = r.Body.Close()
 		}
 		response <- e
 	}()
@@ -110,7 +116,7 @@ func TestServerShutdownTimeout(t *testing.T) {
 	go func() {
 		r, e := http.Get("http://" + listener.Addr().String())
 		if e == nil {
-			r.Body.Close()
+			e = r.Body.Close()
 		}
 		response <- e
 	}()
@@ -121,8 +127,13 @@ func TestServerShutdownTimeout(t *testing.T) {
 		t.Fatalf("shutdown error = %v", err)
 	}
 	close(release)
-	<-response
-	<-done
+
+	if err := <-response; err != nil {
+		t.Error(err)
+	}
+	if err := <-done; err != nil {
+		t.Error(err)
+	}
 }
 
 func TestServerListenReportsOccupiedPort(t *testing.T) {
@@ -130,7 +141,11 @@ func TestServerListenReportsOccupiedPort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		if err := listener.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	server := &CacheServer{httpServer: &http.Server{Addr: listener.Addr().String()}}
 	if err := server.ListenAndServe(); err == nil {
 		t.Fatal("expected occupied port error")

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -49,7 +50,11 @@ type routeHandlers struct{ create, read, update, delete http.Handler }
 
 func registerRoutes(handlers routeHandlers, maxBodyBytes int64) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "Hello, World!") })
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := fmt.Fprint(w, "Hello, World!"); err != nil {
+			log.Printf("writing response: %v", err)
+		}
+	})
 	if handlers.create != nil {
 		mux.Handle("POST /keys", limitBody(handlers.create, maxBodyBytes))
 	}
