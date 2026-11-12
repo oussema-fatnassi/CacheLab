@@ -49,6 +49,13 @@ paths:
               schema:
                 type: string
               example: key already exists
+        '413':
+          description: Corps de requête plus grand que MAX_BODY_BYTES (8 388 608 octets par défaut).
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: request body too large
         '500':
           description: Erreur interne de stockage. Le message reste générique.
           content:
@@ -97,6 +104,58 @@ paths:
               schema:
                 type: string
               example: key not found
+    put:
+      summary: Remplacer la valeur d'une clé existante
+      description: |
+        Remplace la valeur d'une clé déjà présente. Une clé absente n'est jamais créée.
+        Ticket : CL-27 (API-03).
+      operationId: updateKey
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Clé à modifier, encodée pour l'URL si besoin.
+          schema:
+            type: string
+          example: name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateKeyRequest'
+            example:
+              value: Alice
+      responses:
+        '200':
+          description: Valeur remplacée. La réponse n'a pas de corps.
+        '400':
+          description: JSON illisible, clé trop longue ou valeur trop volumineuse.
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                invalidJson:
+                  value: invalid JSON body
+                invalidKey:
+                  value: invalid key
+                valueTooLarge:
+                  value: value too large
+        '404':
+          description: Clé absente. Aucune entrée n'est créée.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: key not found
+        '413':
+          description: Corps de requête plus grand que MAX_BODY_BYTES (8 388 608 octets par défaut).
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: request body too large
 
 components:
   schemas:
@@ -127,3 +186,12 @@ components:
           type: string
           description: Valeur exacte, identique à celle enregistrée.
           example: Test
+    UpdateKeyRequest:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string
+          description: Nouvelle valeur, de MAX_VALUE_BYTES octets au maximum (1 048 576 par défaut). Une valeur vide est acceptée.
+          example: Alice

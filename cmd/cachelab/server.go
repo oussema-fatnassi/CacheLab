@@ -93,7 +93,7 @@ type CacheServer struct {
 }
 
 func newCacheServer(config serverConfig, service *cache.CacheService) *CacheServer {
-	return &CacheServer{service: service, httpServer: &http.Server{Addr: config.address, Handler: registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service)}, config.maxBodyBytes)}}
+	return &CacheServer{service: service, httpServer: &http.Server{Addr: config.address, Handler: registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service), update: handleUpdate(service)}, config.maxBodyBytes)}}
 }
 func (s *CacheServer) Serve(listener net.Listener) error {
 	err := s.httpServer.Serve(listener)
