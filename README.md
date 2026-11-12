@@ -16,7 +16,7 @@ Au premier lancement, copier `.env.example` vers `.env`, puis modifier `PORT` si
 
 Au démarrage, le serveur construit une table et son service. Les variables `CACHE_BUCKET_COUNT`, `MAX_KEY_BYTES` et `MAX_VALUE_BYTES` définissent respectivement le nombre initial de buckets, la taille maximale d'une clé et celle d'une valeur en octets. Leurs valeurs par défaut provisoires sont 16, 256 et 1 048 576 ; elles restent à valider pour le projet ( a arbitrer en équipe). Elles doivent être des entiers strictement positifs.
 
-Le port doit être compris entre 1 et 65535. `MAX_BODY_BYTES` limite le corps complet des requêtes POST et PUT (8 388 608 octets par défaut). Le corps inclut la structure JSON et les caractères échappés : adapter cette limite si nécessaire. `SHUTDOWN_TIMEOUT` fixe le délai d’arrêt progressif (`10s` par défaut, durée Go positive). Ces valeurs sont provisoires et à valider en équipe. Les routes CRUD seront raccordées lorsque les handlers API seront disponibles.
+Le port doit être compris entre 1 et 65535. `MAX_BODY_BYTES` limite le corps complet des requêtes POST et PUT (8 388 608 octets par défaut). Le corps inclut la structure JSON et les caractères échappés : adapter cette limite si nécessaire. `SHUTDOWN_TIMEOUT` fixe le délai d’arrêt progressif (`10s` par défaut, durée Go positive). Ces valeurs sont provisoires et à valider en équipe. Les routes `POST /keys` et `GET /keys/{key}` sont raccordées ; `PUT` et `DELETE` le seront avec leurs handlers.
 
 ```bash
 cp .env.example .env
@@ -67,9 +67,29 @@ Pour le lancer avec Docker :
 docker compose up --build
 ```
 
-Compose utilise le port défini dans `.env`, ou 8080 par défaut. Le service est accessible sur ce même port depuis la machine hôte.
+Compose utilise le port défini dans `.env`, ou 8080 par défaut. Le service est accessible sur ce même port depuis la machine hôte. La même commande lance aussi Swagger UI sur `http://localhost:8081` (voir [Documentation de l'API](#documentation-de-lapi-swagger)).
 
 Autres commandes : `make build` construit `bin/cachelab`, `make test` exécute les tests avec le détecteur de courses, `make lint` lance `go vet`, `gofmt -w .` formate les fichiers Go et `make cover` affiche la couverture.
+
+## Documentation de l'API (Swagger)
+
+La spécification OpenAPI des routes se trouve dans `api/openapi.yaml`. Pour la consulter, lancer l'API et Swagger UI ensemble depuis la racine du projet :
+
+```bash
+docker compose up --build
+```
+
+Ouvrir ensuite `http://localhost:8081` dans un navigateur. Swagger UI affiche chaque route, le corps attendu, des exemples et les codes de réponse. Après une modification de `api/openapi.yaml`, recharger la page suffit. `Ctrl+C` arrête les deux services.
+
+Pour tester une route :
+
+1. Déplier la route, cliquer sur **Try it out**, compléter les champs, puis cliquer sur **Execute**.
+2. Le message « Failed to fetch » est attendu : Swagger UI (port 8081) et l'API (port 8080) n'ont pas la même origine et l'API n'envoie pas d'en-têtes CORS, donc le navigateur bloque la réponse.
+3. Copier la commande affichée dans la zone **Curl** et l'exécuter dans un terminal (Git Bash sous Windows). Ajouter `-i` après `curl` pour afficher le code HTTP.
+
+Par exemple, un premier `POST /keys` renvoie `201 Created`, le même envoi une seconde fois renvoie `409 Conflict`, puis `GET /keys/name` renvoie `{"key":"name","value":"Test"}`.
+
+La spécification cible `http://localhost:8080` : conserver `PORT=8080` dans `.env` pour que les commandes générées atteignent l'API.
 
 ## Tester le hachage
 
