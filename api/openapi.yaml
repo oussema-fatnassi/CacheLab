@@ -1,0 +1,75 @@
+openapi: 3.0.3
+info:
+  title: CacheLab API
+  version: 0.1.0
+  description: |
+    Cache clé/valeur en mémoire.
+    Les erreurs sont renvoyées en texte brut pour l'instant (format JSON commun prévu dans CL-30).
+servers:
+  - url: http://localhost:8080
+    description: Serveur local (port défini par PORT)
+
+paths:
+  /keys:
+    post:
+      summary: Créer une paire clé/valeur
+      description: |
+        Crée une nouvelle entrée. Une clé déjà présente n'est jamais écrasée.
+        Ticket : CL-25 (API-01).
+      operationId: createKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKeyRequest'
+            example:
+              key: name
+              value: Test
+      responses:
+        '201':
+          description: Clé créée. La réponse n'a pas de corps.
+        '400':
+          description: JSON illisible, clé vide ou trop longue, ou valeur trop volumineuse.
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                invalidJson:
+                  value: invalid JSON body
+                invalidKey:
+                  value: invalid key
+                valueTooLarge:
+                  value: value too large
+        '409':
+          description: La clé existe déjà. La valeur d'origine est conservée.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: key already exists
+        '500':
+          description: Erreur interne de stockage. Le message reste générique.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: internal server error
+
+components:
+  schemas:
+    CreateKeyRequest:
+      type: object
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          description: Clé non vide, de MAX_KEY_BYTES octets au maximum (256 par défaut).
+          example: name
+        value:
+          type: string
+          description: Valeur de MAX_VALUE_BYTES octets au maximum (1 048 576 par défaut). Une valeur vide est acceptée.
+          example: Test
