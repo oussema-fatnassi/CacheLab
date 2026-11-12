@@ -53,11 +53,15 @@ func registerRoutes(handlers routeHandlers, maxBodyBytes int64) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /swagger/{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<!DOCTYPE html><html><head><title>CacheLab API</title><link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.34.1/swagger-ui.css"></head><body><div id="swagger-ui"></div><script src="https://unpkg.com/swagger-ui-dist@5.34.1/swagger-ui-bundle.js"></script><script>SwaggerUIBundle({url: '/swagger/openapi.yaml', dom_id: '#swagger-ui'});</script></body></html>`)
+		if _, err := fmt.Fprint(w, `<!DOCTYPE html><html><head><title>CacheLab API</title><link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.34.1/swagger-ui.css"></head><body><div id="swagger-ui"></div><script src="https://unpkg.com/swagger-ui-dist@5.34.1/swagger-ui-bundle.js"></script><script>SwaggerUIBundle({url: '/swagger/openapi.yaml', dom_id: '#swagger-ui'});</script></body></html>`); err != nil {
+			log.Printf("writing response: %v", err)
+		}
 	})
 	mux.HandleFunc("GET /swagger/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
-		w.Write(api.OpenAPI)
+		if _, err := w.Write(api.OpenAPI); err != nil {
+			log.Printf("writing response: %v", err)
+		}
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := fmt.Fprint(w, "Hello, World!"); err != nil {
