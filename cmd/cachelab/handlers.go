@@ -47,22 +47,15 @@ func handleCreate(service *cache.CacheService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request createRequest
 		if err := decodeJSON(r, &request); err != nil || request.Key == nil || request.Value == nil {
-			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
 
-		err := service.Create(*request.Key, *request.Value)
-		switch {
-		case err == nil:
-			w.WriteHeader(http.StatusCreated)
-		case errors.Is(err, cache.ErrKeyExists):
-			http.Error(w, err.Error(), http.StatusConflict)
-		case errors.Is(err, cache.ErrInvalidKey), errors.Is(err, cache.ErrValueTooLarge):
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		default:
-			// Any other storage error must never be reported as a success.
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+		if err := service.Create(*request.Key, *request.Value); err != nil {
+			writeServiceError(w, err)
+			return
 		}
+		w.WriteHeader(http.StatusCreated)
 	}
 }
 
@@ -72,18 +65,13 @@ func handleRead(service *cache.CacheService) http.HandlerFunc {
 		key := r.PathValue("key")
 
 		value, err := service.Read(key)
-		switch {
-		case err == nil:
-			w.Header().Set("Content-Type", "application/json")
-			if err := json.NewEncoder(w).Encode(readResponse{Key: key, Value: value}); err != nil {
-				log.Printf("writing response: %v", err)
-			}
-		case errors.Is(err, cache.ErrNotFound):
-			http.Error(w, err.Error(), http.StatusNotFound)
-		case errors.Is(err, cache.ErrInvalidKey):
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		default:
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(readResponse{Key: key, Value: value}); err != nil {
+			log.Printf("writing response: %v", err)
 		}
 	}
 }
@@ -93,37 +81,25 @@ func handleUpdate(service *cache.CacheService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request updateRequest
 		if err := decodeJSON(r, &request); err != nil || request.Value == nil {
-			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
 
-		err := service.Update(r.PathValue("key"), *request.Value)
-		switch {
-		case err == nil:
-			w.WriteHeader(http.StatusOK)
-		case errors.Is(err, cache.ErrNotFound):
-			http.Error(w, err.Error(), http.StatusNotFound)
-		case errors.Is(err, cache.ErrInvalidKey), errors.Is(err, cache.ErrValueTooLarge):
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		default:
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+		if err := service.Update(r.PathValue("key"), *request.Value); err != nil {
+			writeServiceError(w, err)
+			return
 		}
+		w.WriteHeader(http.StatusOK)
 	}
 }
 
 // handleDelete removes an existing key and answers without a body.
 func handleDelete(service *cache.CacheService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := service.Delete(r.PathValue("key"))
-		switch {
-		case err == nil:
-			w.WriteHeader(http.StatusNoContent)
-		case errors.Is(err, cache.ErrNotFound):
-			http.Error(w, err.Error(), http.StatusNotFound)
-		case errors.Is(err, cache.ErrInvalidKey):
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		default:
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+		if err := service.Delete(r.PathValue("key")); err != nil {
+			writeServiceError(w, err)
+			return
 		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
