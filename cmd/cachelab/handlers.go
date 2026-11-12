@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 
@@ -10,9 +11,10 @@ import (
 )
 
 // createRequest is the JSON body expected by POST /keys.
+// Pointers tell a missing or null field apart from an empty string.
 type createRequest struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key   *string `json:"key"`
+	Value *string `json:"value"`
 }
 
 // readResponse is the JSON body returned by GET /keys/{key}.
@@ -23,19 +25,33 @@ type readResponse struct {
 
 // updateRequest is the JSON body expected by PUT /keys/{key}.
 type updateRequest struct {
-	Value string `json:"value"`
+	Value *string `json:"value"`
+}
+
+// decodeJSON reads exactly one JSON object that contains only the expected fields.
+func decodeJSON(r *http.Request, request any) error {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(request); err != nil {
+		return err
+	}
+	// Anything left after the object, such as a second object or a stray brace, is refused.
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("unexpected data after the JSON object")
+	}
+	return nil
 }
 
 // handleCreate stores a new key/value pair and refuses an existing key.
 func handleCreate(service *cache.CacheService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request createRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		if err := decodeJSON(r, &request); err != nil || request.Key == nil || request.Value == nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
 
-		err := service.Create(request.Key, request.Value)
+		err := service.Create(*request.Key, *request.Value)
 		switch {
 		case err == nil:
 			w.WriteHeader(http.StatusCreated)
@@ -76,12 +92,12 @@ func handleRead(service *cache.CacheService) http.HandlerFunc {
 func handleUpdate(service *cache.CacheService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request updateRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		if err := decodeJSON(r, &request); err != nil || request.Value == nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
 
-		err := service.Update(r.PathValue("key"), request.Value)
+		err := service.Update(r.PathValue("key"), *request.Value)
 		switch {
 		case err == nil:
 			w.WriteHeader(http.StatusOK)

@@ -6,8 +6,8 @@ info:
     Cache clé/valeur en mémoire.
     Les erreurs sont renvoyées en texte brut pour l'instant (format JSON commun prévu dans CL-30).
 servers:
-  - url: http://localhost:8080
-    description: Serveur local (port défini par PORT)
+  - url: /
+    description: Serveur courant
 
 paths:
   /keys:
@@ -30,7 +30,7 @@ paths:
         '201':
           description: Clé créée. La réponse n'a pas de corps.
         '400':
-          description: JSON illisible, clé vide ou trop longue, ou valeur trop volumineuse.
+          description: JSON invalide (mal formé, champ manquant, inconnu, null ou de mauvais type, données après l'objet), clé vide ou trop longue, ou valeur trop volumineuse.
           content:
             text/plain:
               schema:
@@ -130,7 +130,7 @@ paths:
         '200':
           description: Valeur remplacée. La réponse n'a pas de corps.
         '400':
-          description: JSON illisible, clé trop longue ou valeur trop volumineuse.
+          description: JSON invalide (mal formé, champ manquant, inconnu, null ou de mauvais type, données après l'objet), clé trop longue ou valeur trop volumineuse.
           content:
             text/plain:
               schema:
@@ -193,6 +193,7 @@ components:
   schemas:
     CreateKeyRequest:
       type: object
+      additionalProperties: false
       required:
         - key
         - value
@@ -220,6 +221,7 @@ components:
           example: Test
     UpdateKeyRequest:
       type: object
+      additionalProperties: false
       required:
         - value
       properties:

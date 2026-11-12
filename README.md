@@ -67,29 +67,17 @@ Pour le lancer avec Docker :
 docker compose up --build
 ```
 
-Compose utilise le port défini dans `.env`, ou 8080 par défaut. Le service est accessible sur ce même port depuis la machine hôte. La même commande lance aussi Swagger UI sur `http://localhost:8081` (voir [Documentation de l'API](#documentation-de-lapi-swagger)).
+Compose utilise le port défini dans `.env`, ou 8080 par défaut. Le service est accessible sur ce même port depuis la machine hôte. Swagger UI est accessible sur le même port que l’API (voir [Documentation de l'API](#documentation-de-lapi-swagger)).
 
 Autres commandes : `make build` construit `bin/cachelab`, `make test` exécute les tests avec le détecteur de courses, `make lint` lance `go vet`, `gofmt -w .` formate les fichiers Go et `make cover` affiche la couverture.
 
 ## Documentation de l'API (Swagger)
 
-La spécification OpenAPI des routes se trouve dans `api/openapi.yaml`. Pour la consulter, lancer l'API et Swagger UI ensemble depuis la racine du projet :
+La spécification OpenAPI des routes se trouve dans `api/openapi.yaml` et est intégrée au serveur lors de sa compilation. Après avoir lancé le serveur localement ou avec Docker Compose, ouvrir `http://localhost:8080/swagger/` (adapter le port à `PORT`).
 
-```bash
-docker compose up --build
-```
+Swagger UI permet de consulter et de tester les routes directement dans le navigateur : déplier une route, cliquer sur **Try it out**, compléter les champs puis cliquer sur **Execute**. Les requêtes utilisent le même serveur et le même port que la documentation.
 
-Ouvrir ensuite `http://localhost:8081` dans un navigateur. Swagger UI affiche chaque route, le corps attendu, des exemples et les codes de réponse. Après une modification de `api/openapi.yaml`, recharger la page suffit. `Ctrl+C` arrête les deux services.
-
-Pour tester une route :
-
-1. Déplier la route, cliquer sur **Try it out**, compléter les champs, puis cliquer sur **Execute**.
-2. Le message « Failed to fetch » est attendu : Swagger UI (port 8081) et l'API (port 8080) n'ont pas la même origine et l'API n'envoie pas d'en-têtes CORS, donc le navigateur bloque la réponse.
-3. Copier la commande affichée dans la zone **Curl** et l'exécuter dans un terminal (Git Bash sous Windows). Ajouter `-i` après `curl` pour afficher le code HTTP.
-
-Par exemple, un premier `POST /keys` renvoie `201 Created`, le même envoi une seconde fois renvoie `409 Conflict`, puis `GET /keys/name` renvoie `{"key":"name","value":"Test"}`.
-
-La spécification cible `http://localhost:8080` : conserver `PORT=8080` dans `.env` pour que les commandes générées atteignent l'API.
+L'interface Swagger UI charge ses fichiers JavaScript et CSS depuis un CDN : une connexion Internet est nécessaire pour l'afficher. Après modification de `api/openapi.yaml`, reconstruire et redémarrer le serveur pour intégrer la nouvelle spécification.
 
 ## Tester le hachage
 

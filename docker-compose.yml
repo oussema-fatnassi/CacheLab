@@ -10,12 +10,3 @@ services:
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
-
-  swagger:
-    image: swaggerapi/swagger-ui:v5.34.1
-    environment:
-      SWAGGER_JSON: /spec/openapi.yaml
-    volumes:
-      - ./api:/spec:ro
-    ports:
-      - "8081:8080"
