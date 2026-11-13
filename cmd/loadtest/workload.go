@@ -27,8 +27,8 @@ type operationStats struct {
 
 type workItem struct {
 	entry
-	missing bool
-	due     time.Time
+	missing   bool
+	dueOffset time.Duration
 }
 
 func (c config) validateWorkload() error {
@@ -49,7 +49,7 @@ func (c config) validateWorkload() error {
 
 // executePhase bounds all in-flight requests. A single scheduler owns the seeded
 // generator; workers never generate randomness, so scheduling order is reproducible.
-func executePhase(client *http.Client, cfg config, entries []entry, value, name string) (phaseResult, string) {
+func executePhase(client *http.Client, cfg config, entries []entry, value, name string, clock latencyClock) (phaseResult, string) {
 	phase := phaseResult{Name: name, Timed: name == "insert" || name == "read", Statuses: make(map[int]int)}
 	if phase.Timed {
 		phase.Operations = make(map[string]*operationStats)
@@ -73,6 +73,11 @@ func executePhase(client *http.Client, cfg config, entries []entry, value, name 
 	var workers sync.WaitGroup
 	var mu sync.Mutex
 	failure := ""
+	startTick, err := clock.now()
+	if err != nil {
+		phase.TimingErrors++
+		return phase, "measurement clock failed"
+	}
 	started := time.Now()
 	for i := 0; i < cfg.Concurrency; i++ {
 		workers.Add(1)
@@ -86,10 +91,20 @@ func executePhase(client *http.Client, cfg config, entries []entry, value, name 
 				} else if item.missing {
 					path, want, group = "/keys/miss-"+item.Key, http.StatusNotFound, "GET_miss"
 				}
-				requestStart := time.Now()
-				status, response, problem, timeout := request(client, cfg, method, path, body, int64(cfg.ValueBytes)*6+1024)
-				elapsed := time.Since(requestStart)
+				requestStart, clockErr := clock.now()
+				var status int
+				var response []byte
+				var problem string
+				var timeout bool
+				var elapsed time.Duration
+				if clockErr == nil {
+					status, response, problem, timeout = request(client, cfg, method, path, body, int64(cfg.ValueBytes)*6+1024)
+					elapsed, clockErr = clock.since(requestStart)
+				}
 				responseReadFailed := problem != "" && status != 0
+				if clockErr != nil {
+					problem = "measurement clock failed"
+				}
 				invalidValue := false
 				if problem == "" {
 					if status != want {
@@ -107,8 +122,11 @@ func executePhase(client *http.Client, cfg config, entries []entry, value, name 
 				if status != 0 {
 					phase.Statuses[status]++
 				}
-				if status == 0 {
+				if status == 0 && clockErr == nil {
 					phase.Transport++
+				}
+				if clockErr != nil {
+					phase.TimingErrors++
 				}
 				if timeout {
 					phase.Timeouts++
@@ -129,9 +147,11 @@ func executePhase(client *http.Client, cfg config, entries []entry, value, name 
 					}
 				}
 				if phase.Timed {
-					phase.LatenciesNS = append(phase.LatenciesNS, elapsed.Nanoseconds())
-					if rate > 0 {
-						delay := max(int64(0), requestStart.Sub(item.due).Nanoseconds())
+					if clockErr == nil {
+						phase.LatenciesNS = append(phase.LatenciesNS, elapsed.Nanoseconds())
+					}
+					if rate > 0 && clockErr == nil {
+						delay := max(int64(0), int64(requestStart-startTick-item.dueOffset))
 						phase.ScheduleDelaysNS = append(phase.ScheduleDelaysNS, delay)
 						if delay > int64(time.Millisecond) {
 							phase.Delayed++
@@ -159,14 +179,18 @@ func executePhase(client *http.Client, cfg config, entries []entry, value, name 
 		}()
 	}
 	planned, unsent, schedulerFailure := schedule(ctx, jobs, slots, cfg, entries, name, started, duration, rate)
-	schedulingEnd := time.Now()
+	schedulingElapsed, schedulingClockErr := clock.since(startTick)
 	close(jobs)
 	workers.Wait()
-	finished := time.Now()
+	elapsed, endClockErr := clock.since(startTick)
 	phase.Scheduled, phase.Unsent = planned, unsent
 	phase.NotScheduled = max(0, planned-phase.Attempts-unsent)
-	phase.WindowMS = float64(schedulingEnd.Sub(started)) / float64(time.Millisecond)
-	phase.DrainMS = float64(finished.Sub(schedulingEnd)) / float64(time.Millisecond)
+	if schedulingClockErr != nil || endClockErr != nil {
+		phase.TimingErrors++
+		return phase, "measurement clock failed"
+	}
+	phase.WindowMS = float64(schedulingElapsed) / float64(time.Millisecond)
+	phase.DrainMS = float64(max(time.Duration(0), elapsed-schedulingElapsed)) / float64(time.Millisecond)
 	if failure == "" {
 		failure = schedulerFailure
 	}
@@ -177,14 +201,13 @@ func executePhase(client *http.Client, cfg config, entries []entry, value, name 
 		failure = "offered rate not sustained: some requests were not sent"
 	}
 	if phase.Timed {
-		elapsed := finished.Sub(started)
 		phase.TotalMS = float64(elapsed) / float64(time.Millisecond)
 		if elapsed > 0 {
 			phase.SuccessfulRPS = float64(phase.Successes) / elapsed.Seconds()
 			phase.CompletedRPS = float64(phase.Attempts-phase.Transport-phase.ResponseReadErrors) / elapsed.Seconds()
 		}
-		if schedulingEnd.After(started) {
-			phase.StartedRPS = float64(phase.Attempts) / schedulingEnd.Sub(started).Seconds()
+		if schedulingElapsed > 0 {
+			phase.StartedRPS = float64(phase.Attempts) / schedulingElapsed.Seconds()
 		}
 		if phase.Errors == 0 && phase.Attempts > 0 {
 			var sum float64
@@ -233,8 +256,8 @@ func schedule(ctx context.Context, jobs chan<- workItem, slots chan struct{}, cf
 			item.missing = rng.Intn(100) < cfg.MissPercent
 		}
 		if rate > 0 {
-			item.due = started.Add(time.Duration(float64(i) / rate * float64(time.Second)))
-			if !waitUntil(window, item.due) {
+			item.dueOffset = time.Duration(float64(i) / rate * float64(time.Second))
+			if !waitUntil(window, started.Add(item.dueOffset)) {
 				return planned, unsent, ""
 			}
 			select {

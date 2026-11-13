@@ -28,6 +28,7 @@ type phaseResult struct {
 	Statuses           map[int]int                `json:"http_statuses"`
 	Transport          int                        `json:"transport_errors"`
 	ResponseReadErrors int                        `json:"response_read_errors"`
+	TimingErrors       int                        `json:"timing_errors"`
 	Timeouts           int                        `json:"timeouts"`
 	InvalidValue       int                        `json:"invalid_values"`
 	TotalMS            float64                    `json:"total_ms"`
@@ -58,6 +59,13 @@ func run(client *http.Client, cfg config) report {
 		return report{Failure: err.Error()}
 	}
 	result := report{Metadata: metadata(cfg)}
+	clock, err := newLatencyClock()
+	if err != nil {
+		result.Failure = "measurement clock initialization failed: " + err.Error()
+		return result
+	}
+	result.Metadata["latency_clock"] = clock.name
+	result.Metadata["latency_clock_frequency_hz"] = clock.frequency
 	value := strings.Repeat("x", cfg.ValueBytes)
 	entries := make([]entry, cfg.Count)
 	for i := range entries {
@@ -80,7 +88,7 @@ func run(client *http.Client, cfg config) report {
 		if timed && !collectMetrics(client, cfg, &result, name, "before") {
 			return result
 		}
-		phase, failure := executePhase(client, cfg, entries, value, name)
+		phase, failure := executePhase(client, cfg, entries, value, name, clock)
 		result.Phases = append(result.Phases, phase)
 		if failure != "" {
 			result.Failure = name + ": " + failure

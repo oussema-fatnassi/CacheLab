@@ -77,6 +77,9 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("Configuration: %s | Entries: %d | Value: %d bytes\n", cfg.Label, cfg.Count, cfg.ValueBytes)
+	if clock, ok := result.Metadata["latency_clock"]; ok {
+		fmt.Println("Measurement clock:", clock)
+	}
 	for _, phase := range result.Phases {
 		fmt.Printf("%-8s %d/%d successful", phase.Name, phase.Successes, phase.Attempts)
 		if phase.Timed {
@@ -141,7 +144,7 @@ func clientCommit() string {
 func metadata(c config) map[string]any {
 	host, _ := os.Hostname()
 	return map[string]any{
-		"report_version": 2, "percentile_method": "nearest_rank_successful_responses",
+		"report_version": 3, "percentile_method": "nearest_rank_successful_responses",
 		"started_at_utc": time.Now().UTC(), "server_url": strings.TrimRight(c.URL, "/"),
 		"label": c.Label, "entries": c.Count, "value_bytes": c.ValueBytes,
 		"concurrency": c.Concurrency, "timeout": c.Timeout.String(), "authentication": "Bearer",
