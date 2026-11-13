@@ -159,7 +159,7 @@ func serverHandler(config serverConfig, service *cache.CacheService, logger *slo
 	metrics := newServerMetrics()
 	// /metrics is not in the public list of authenticate, so it requires the API key.
 	routes.Handle("GET /metrics", metrics)
-	return logRequests(logger, metrics, routes, recoverPanics(logger, authenticate(routes, config.apiKey)))
+	return logRequests(logger, metrics, routes, recoverPanics(logger, authenticate(jsonRoutingErrors(routes), config.apiKey)))
 }
 
 // Serve accepts requests on listener until shutdown or a serving error.
