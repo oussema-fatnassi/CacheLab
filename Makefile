@@ -22,5 +22,7 @@ loadtest:
 	go run ./cmd/loadtest $(ARGS)
 
 cover:
-	go test -coverprofile=coverage.out ./...
+	@echo Production coverage: ./cmd/cachelab ./internal/cache ./api
+	go test -count=1 -covermode=atomic -coverprofile=coverage.out ./cmd/cachelab ./internal/cache ./api
 	go tool cover -func=coverage.out
+	go run ./tools/coverreport coverage.out
