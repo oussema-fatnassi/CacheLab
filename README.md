@@ -71,6 +71,12 @@ Compose utilise le port défini dans `.env`, ou 8080 par défaut. Le service est
 
 Autres commandes : `make build` construit `bin/cachelab`, `make test` exécute les tests avec le détecteur de courses, `make lint` lance `go vet`, `gofmt -w .` formate les fichiers Go et `make cover` affiche la couverture.
 
+## Protocole de performance
+
+Le [protocole PERF-01-A](docs/performance-protocol.md) propose une comparaison simple : insérer puis lire 1 000, 10 000 et 100 000 clés, avec 16 puis 1 024 buckets initiaux. Le [modèle de rapport](docs/performance-report-template.md) permet de noter les temps et les erreurs.
+
+Le client automatisé relève du ticket QA-02-A. Aucun résultat n’est encore mesuré. Garder les mêmes conditions entre configurations ; les mesures finales utiliseront l’authentification une fois celle-ci intégrée.
+
 ## Documentation de l'API (Swagger)
 
 La spécification OpenAPI des routes se trouve dans `api/openapi.yaml` et est intégrée au serveur lors de sa compilation. Après avoir lancé le serveur localement ou avec Docker Compose, ouvrir `http://localhost:8080/swagger/` (adapter le port à `PORT`).
