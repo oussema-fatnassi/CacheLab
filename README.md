@@ -72,9 +72,9 @@ Le client de démonstration `make client` contacte seulement la route publique `
 
 Seuls les accès GET/HEAD à `/`, `/health`, `/swagger`, `/swagger/` et `/swagger/openapi.yaml` sont publics. Les autres chemins passent par l'authentification, y compris `/metrics` et les futures routes. La racine ne sert plus de réponse de secours pour les chemins inconnus : avec une clé valide, ils renvoient `404`.
 
-L'exporteur `/metrics` sera ajouté par OBS-01 : une requête authentifiée y reçoit actuellement `404`, et une requête non authentifiée `401`. Le futur collecteur devra envoyer le même en-tête Bearer, avec une clé fournie par sa configuration de secrets ; ne pas intégrer la clé au fichier de configuration versionné.
+L'exporteur `/metrics` (voir [Métriques](#métriques)) exige la même clé : une requête non authentifiée reçoit `401`. Un collecteur de métriques doit envoyer le même en-tête Bearer, avec une clé fournie par sa configuration de secrets ; ne pas intégrer la clé au fichier de configuration versionné.
 
-Pour renouveler la clé, générer une nouvelle valeur, la remplacer dans la configuration du serveur et des clients (y compris le futur collecteur), puis redémarrer le serveur. Avec Compose, utiliser `docker compose up -d --force-recreate` pour réinjecter l'environnement ; un simple `docker compose restart` ne recharge pas la nouvelle valeur. Une seule clé est active par processus : après redémarrage, l'ancienne clé est refusée. Les données étant en mémoire, un redémarrage vide le cache.
+Pour renouveler la clé, générer une nouvelle valeur, la remplacer dans la configuration du serveur et des clients (y compris un collecteur de métriques), puis redémarrer le serveur. Avec Compose, utiliser `docker compose up -d --force-recreate` pour réinjecter l'environnement ; un simple `docker compose restart` ne recharge pas la nouvelle valeur. Une seule clé est active par processus : après redémarrage, l'ancienne clé est refusée. Les données étant en mémoire, un redémarrage vide le cache.
 
 ### Lancer le serveur avec Docker
 
@@ -117,6 +117,38 @@ Chaque requête produit un événement `http request` :
 Les journaux ne contiennent jamais l'URL brute (donc ni les clés ni les paramètres), les en-têtes (dont `Authorization`), les corps (donc ni les valeurs) ni le contenu d'une panic : une panic récupérée produit seulement l'événement `handler panic recovered` avec son `request_id`. Le JSON échappe les retours à la ligne, si bien qu'une entrée ne peut pas créer un faux événement.
 
 Pendant une campagne de performance, conserver l'événement `logging configured` et le volume de journaux (nombre d'événements `http request`) ; voir le [protocole](docs/performance-protocol.md).
+
+## Métriques
+
+`GET /metrics` exporte les compteurs du serveur au format texte Prometheus. La route exige la même clé que les routes CRUD (`401` sans clé valide). Pour enregistrer l'export dans un fichier, par exemple avant et après une phase de mesure :
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" "http://localhost:${PORT:-8080}/metrics" > metrics-avant.txt
+```
+
+| Métrique | Type | Unité | Contenu |
+| --- | --- | --- | --- |
+| `cachelab_http_requests_total{route, status}` | compteur | requêtes | Requêtes par motif de route et code de réponse, refus compris (`401`, `400`, `413`…) |
+| `cachelab_cache_hits_total` | compteur | lectures | `GET /keys/{key}` qui trouvent la clé (`200`) |
+| `cachelab_cache_misses_total` | compteur | lectures | `GET /keys/{key}` d'une clé absente (`404`) : un miss est une réponse normale, pas une erreur |
+| `cachelab_http_errors_total` | compteur | réponses | Erreurs internes, c'est-à-dire les réponses `5xx` |
+| `cachelab_http_request_duration_seconds` | histogramme | secondes | Durée de traitement côté serveur (voir ci-dessous) |
+| `cachelab_go_memory_sys_bytes` | jauge | octets | Mémoire obtenue du système par le runtime Go pour tout le processus (tas, piles, données du runtime) |
+| `cachelab_go_heap_alloc_bytes` | jauge | octets | Mémoire des objets alloués sur le tas de tout le processus, entrées du cache comprises |
+
+Les labels ne contiennent que le motif de route et le code de réponse : jamais de clé, de valeur ni de secret. Les compteurs repartent de zéro à chaque démarrage du serveur.
+
+**Histogramme.** Les bornes `le` valent 0,0001 ; 0,00025 ; 0,0005 ; 0,001 ; 0,0025 ; 0,005 ; 0,01 ; 0,025 ; 0,05 ; 0,1 ; 0,25 ; 0,5 et 1 seconde, puis `+Inf`. Chaque bucket est cumulatif : il compte les requêtes qui ont duré au plus sa borne. `_sum` donne la durée totale en secondes et `_count` le nombre de requêtes.
+
+**Latence serveur et latence client.** La durée de l'histogramme, comme `duration_ms` dans les journaux, est mesurée dans le serveur, du premier middleware à la fin du handler : elle exclut le réseau, l'établissement de la connexion et le travail du client. La latence mesurée par le client de charge (QA-02-A) inclut en plus HTTP et le réseau ; elle est donc toujours plus grande. Ne comparer que des latences de même nature.
+
+**Mémoire.** Les deux jauges viennent de `runtime.ReadMemStats` : elles décrivent tout le processus Go, pas seulement les données du cache, et ne correspondent pas exactement à la mémoire vue par le système ou par Docker (RSS).
+
+**Coût de l'instrumentation.** Chaque requête met à jour les compteurs sous un petit verrou propre aux métriques, jamais celui de la table, et sans parcourir les entrées : environ 31 ns par requête avec `BenchmarkMetricsObserve` (mesuré sur un i7-12650H). La lecture de la mémoire provoque une courte pause du programme, uniquement lors d'une requête sur `/metrics`. Garder la même fréquence de lecture de `/metrics` entre les variantes comparées.
+
+```bash
+go test -run '^$' -bench BenchmarkMetricsObserve ./cmd/cachelab
+```
 
 ## Documentation de l'API (Swagger)
 
