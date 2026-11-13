@@ -19,11 +19,16 @@ import (
 
 type serverConfig struct {
 	address         string
+	apiKey          string
 	maxBodyBytes    int64
 	shutdownTimeout time.Duration
 }
 
 func loadServerConfig() (serverConfig, error) {
+	apiKey := os.Getenv("API_KEY")
+	if !validAPIKey(apiKey) {
+		return serverConfig{}, fmt.Errorf("API_KEY is required and must be a nonempty Bearer token without whitespace")
+	}
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -44,7 +49,7 @@ func loadServerConfig() (serverConfig, error) {
 			return serverConfig{}, fmt.Errorf("SHUTDOWN_TIMEOUT must be a positive duration, for example 10s")
 		}
 	}
-	return serverConfig{address: ":" + port, maxBodyBytes: int64(maxBody), shutdownTimeout: timeout}, nil
+	return serverConfig{address: ":" + port, apiKey: apiKey, maxBodyBytes: int64(maxBody), shutdownTimeout: timeout}, nil
 }
 
 type routeHandlers struct{ create, read, update, delete http.Handler }
@@ -63,7 +68,13 @@ func registerRoutes(handlers routeHandlers, maxBodyBytes int64) *http.ServeMux {
 			log.Printf("writing response: %v", err)
 		}
 	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := fmt.Fprintln(w, `{"status":"ok"}`); err != nil {
+			log.Printf("writing response: %v", err)
+		}
+	})
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := fmt.Fprint(w, "Hello, World!"); err != nil {
 			log.Printf("writing response: %v", err)
 		}
@@ -121,7 +132,7 @@ type CacheServer struct {
 }
 
 func newCacheServer(config serverConfig, service *cache.CacheService) *CacheServer {
-	return &CacheServer{service: service, httpServer: &http.Server{Addr: config.address, Handler: recoverPanics(registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service), update: handleUpdate(service), delete: handleDelete(service)}, config.maxBodyBytes))}}
+	return &CacheServer{service: service, httpServer: &http.Server{Addr: config.address, Handler: recoverPanics(authenticate(registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service), update: handleUpdate(service), delete: handleDelete(service)}, config.maxBodyBytes), config.apiKey))}}
 }
 func (s *CacheServer) Serve(listener net.Listener) error {
 	err := s.httpServer.Serve(listener)
