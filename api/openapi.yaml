@@ -9,6 +9,7 @@ info:
     /metrics est également protégé, mais l'exporteur sera ajouté par OBS-01 : avec une clé valide, ce chemin renvoie actuellement 404.
     Toutes les erreurs utilisent le même format JSON : `{"error": "message"}`.
     Une erreur inattendue renvoie 500 avec un message générique, sans détail interne.
+    Chaque réponse contient un en-tête X-Request-ID, repris dans les journaux du serveur pour retrouver la requête.
 servers:
   - url: /
     description: Serveur courant
