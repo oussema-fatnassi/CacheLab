@@ -7,7 +7,9 @@ import (
 	"strings"
 )
 
-// validAPIKey accepts the token syntax used by Authorization: Bearer.
+// validAPIKey accepts ASCII letters, digits, and -._~+/ followed by optional
+// trailing '=' padding. The token must contain at least one non-padding character;
+// whitespace, non-ASCII characters, and padding within the token are rejected.
 func validAPIKey(key string) bool {
 	token := strings.TrimRight(key, "=")
 	if token == "" {
@@ -21,8 +23,12 @@ func validAPIKey(key string) bool {
 	return true
 }
 
-// authenticate runs before routing and body processing, including future routes.
+// authenticate requires one Authorization header containing a Bearer credential.
+// Only GET and HEAD requests to the explicit public paths bypass this check.
+// It runs before routing and body processing, protecting future routes by default.
 func authenticate(next http.Handler, apiKey string) http.Handler {
+	// Compare fixed-size digests so the constant-time comparison does not depend
+	// on the length of the supplied credential. The API key itself is not logged.
 	expected := sha256.Sum256([]byte(apiKey))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
