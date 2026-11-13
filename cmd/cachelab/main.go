@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strconv"
@@ -12,8 +13,11 @@ import (
 	"github.com/oussema-fatnassi/CacheLab/internal/cache"
 )
 
+// application holds the cache service shared by the HTTP handlers.
 type application struct{ service *cache.CacheService }
 
+// positiveSetting reads a positive integer from the environment, using fallback
+// when the variable is unset or empty.
 func positiveSetting(name string, fallback int) (int, error) {
 	value := os.Getenv(name)
 	if value == "" {
@@ -26,6 +30,8 @@ func positiveSetting(name string, fallback int) (int, error) {
 	return n, nil
 }
 
+// newApplication builds an in-memory cache from environment settings.
+// Defaults are 16 buckets, 256 bytes per key, and 1 MiB per value.
 func newApplication() (*application, error) {
 	buckets, err := positiveSetting("CACHE_BUCKET_COUNT", 16)
 	if err != nil {
@@ -44,6 +50,12 @@ func newApplication() (*application, error) {
 }
 
 func main() {
+	// One JSON event per line on standard output, with the same settings for every
+	// engine variant. log.Printf and log.Fatal also go through this JSON logger.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	// Recorded at startup so performance campaigns know the logging configuration.
+	slog.Info("logging configured", "format", "json", "log_level", "info", "output", "stdout")
+
 	config, err := loadServerConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -54,11 +66,11 @@ func main() {
 	}
 	server := newCacheServer(config, app.service)
 
-	// Le contexte est annulé à la réception de Ctrl+C ou de SIGTERM.
+	// Ctrl+C or SIGTERM starts graceful shutdown.
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// L'écoute s'exécute en parallèle pour pouvoir attendre aussi un signal.
+	// Report serving errors while also waiting for a shutdown signal.
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.ListenAndServe() }()
 	log.Printf("Listening on %s", config.address)
@@ -73,7 +85,7 @@ func main() {
 	}
 
 	stop()
-	// Laisser les requêtes en cours se terminer dans le délai configuré.
+	// Give active requests the configured time to finish.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.shutdownTimeout)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {

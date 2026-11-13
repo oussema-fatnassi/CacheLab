@@ -12,6 +12,7 @@ import (
 )
 
 func TestServerConfigurationRejectsInvalidSettings(t *testing.T) {
+	t.Setenv("API_KEY", testAPIKey)
 	for _, s := range []struct{ name, value string }{{"PORT", "65536"}, {"PORT", "abc"}, {"MAX_BODY_BYTES", "0"}, {"SHUTDOWN_TIMEOUT", "invalid"}, {"SHUTDOWN_TIMEOUT", "-1s"}} {
 		t.Run(s.name+"="+s.value, func(t *testing.T) {
 			t.Setenv(s.name, s.value)
@@ -37,6 +38,7 @@ func TestRoutesAndBodyLimit(t *testing.T) {
 		}
 	}
 	req, _ := http.NewRequest("POST", "/keys", strings.NewReader("123456"))
+	// Enforce the limit from bytes read even when the body length is unknown.
 	req.ContentLength = -1
 	w := &responseRecorder{header: make(http.Header)}
 	mux.ServeHTTP(w, req)
@@ -86,6 +88,7 @@ func TestServerShutdownWaitsForRequests(t *testing.T) {
 	<-started
 	shutdown := make(chan error, 1)
 	go func() { shutdown <- server.Shutdown(context.Background()) }()
+	// Keep the request blocked until shutdown has had a chance to wait for it.
 	select {
 	case err := <-shutdown:
 		t.Fatalf("shutdown returned before request completed: %v", err)
@@ -153,6 +156,7 @@ func TestServerListenReportsOccupiedPort(t *testing.T) {
 }
 
 func TestServerConfigurationAllowsSmallBodyLimit(t *testing.T) {
+	t.Setenv("API_KEY", testAPIKey)
 	t.Setenv("MAX_BODY_BYTES", "10")
 	if _, err := loadServerConfig(); err != nil {
 		t.Fatal(err)
@@ -161,7 +165,7 @@ func TestServerConfigurationAllowsSmallBodyLimit(t *testing.T) {
 
 func TestServerKeepsExistingRootHandlerWithoutCRUDHandlers(t *testing.T) {
 	server := newCacheServer(serverConfig{maxBodyBytes: 100}, nil)
-	req := httptest.NewRequest(http.MethodPost, "/other", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	response := httptest.NewRecorder()
 	server.httpServer.Handler.ServeHTTP(response, req)
 	if response.Code != http.StatusOK || response.Body.String() != "Hello, World!" {
@@ -174,8 +178,8 @@ func TestServerCreateRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := newCacheServer(serverConfig{maxBodyBytes: 64}, app.service)
-	request := httptest.NewRequest(http.MethodPost, "/keys", strings.NewReader(`{"key":"name","value":"Test"}`))
+	server := newCacheServer(serverConfig{apiKey: testAPIKey, maxBodyBytes: 64}, app.service)
+	request := authorizedRequest(http.MethodPost, "/keys", strings.NewReader(`{"key":"name","value":"Test"}`))
 	response := httptest.NewRecorder()
 	server.httpServer.Handler.ServeHTTP(response, request)
 	if response.Code != http.StatusCreated {
@@ -184,7 +188,7 @@ func TestServerCreateRoute(t *testing.T) {
 	if value, err := app.service.Read("name"); err != nil || value != "Test" {
 		t.Fatalf("Read = %q, %v", value, err)
 	}
-	request = httptest.NewRequest(http.MethodPost, "/keys", strings.NewReader(strings.Repeat("x", 65)))
+	request = authorizedRequest(http.MethodPost, "/keys", strings.NewReader(strings.Repeat("x", 65)))
 	response = httptest.NewRecorder()
 	server.httpServer.Handler.ServeHTTP(response, request)
 	if response.Code != http.StatusRequestEntityTooLarge {
@@ -200,14 +204,14 @@ func TestServerReadRoute(t *testing.T) {
 	if err := app.service.Create("name", "Test"); err != nil {
 		t.Fatal(err)
 	}
-	server := newCacheServer(serverConfig{maxBodyBytes: 64}, app.service)
+	server := newCacheServer(serverConfig{apiKey: testAPIKey, maxBodyBytes: 64}, app.service)
 	response := httptest.NewRecorder()
-	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/keys/name", nil))
+	server.httpServer.Handler.ServeHTTP(response, authorizedRequest(http.MethodGet, "/keys/name", nil))
 	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != `{"key":"name","value":"Test"}` {
 		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
 	response = httptest.NewRecorder()
-	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/keys/missing", nil))
+	server.httpServer.Handler.ServeHTTP(response, authorizedRequest(http.MethodGet, "/keys/missing", nil))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("missing key status = %d; want 404", response.Code)
 	}
@@ -221,15 +225,15 @@ func TestServerUpdateRoute(t *testing.T) {
 	if err := app.service.Create("name", "Test"); err != nil {
 		t.Fatal(err)
 	}
-	server := newCacheServer(serverConfig{maxBodyBytes: 64}, app.service)
+	server := newCacheServer(serverConfig{apiKey: testAPIKey, maxBodyBytes: 64}, app.service)
 	response := httptest.NewRecorder()
-	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPut, "/keys/name", strings.NewReader(`{"value":"Alice"}`)))
+	server.httpServer.Handler.ServeHTTP(response, authorizedRequest(http.MethodPut, "/keys/name", strings.NewReader(`{"value":"Alice"}`)))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d; want 200", response.Code)
 	}
 	// Integration: reading the key afterwards returns the new value.
 	response = httptest.NewRecorder()
-	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/keys/name", nil))
+	server.httpServer.Handler.ServeHTTP(response, authorizedRequest(http.MethodGet, "/keys/name", nil))
 	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != `{"key":"name","value":"Alice"}` {
 		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
@@ -243,15 +247,15 @@ func TestServerDeleteRoute(t *testing.T) {
 	if err := app.service.Create("name", "Test"); err != nil {
 		t.Fatal(err)
 	}
-	server := newCacheServer(serverConfig{maxBodyBytes: 64}, app.service)
+	server := newCacheServer(serverConfig{apiKey: testAPIKey, maxBodyBytes: 64}, app.service)
 	response := httptest.NewRecorder()
-	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/keys/name", nil))
+	server.httpServer.Handler.ServeHTTP(response, authorizedRequest(http.MethodDelete, "/keys/name", nil))
 	if response.Code != http.StatusNoContent || response.Body.Len() != 0 {
 		t.Fatalf("response = %d %q; want 204 with no body", response.Code, response.Body.String())
 	}
 	// Integration: reading the key afterwards reports it as absent.
 	response = httptest.NewRecorder()
-	server.httpServer.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/keys/name", nil))
+	server.httpServer.Handler.ServeHTTP(response, authorizedRequest(http.MethodGet, "/keys/name", nil))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("read after delete status = %d; want 404", response.Code)
 	}

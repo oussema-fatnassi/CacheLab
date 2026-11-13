@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -17,13 +18,22 @@ import (
 	"github.com/oussema-fatnassi/CacheLab/internal/cache"
 )
 
+// serverConfig contains validated HTTP settings and the required API credential.
 type serverConfig struct {
 	address         string
+	apiKey          string
 	maxBodyBytes    int64
 	shutdownTimeout time.Duration
 }
 
+// loadServerConfig requires API_KEY to use Bearer token syntax and validates
+// optional settings. Defaults are port 8080, an 8 MiB body limit, and a 10s
+// shutdown timeout. Configuration errors never include the API key value.
 func loadServerConfig() (serverConfig, error) {
+	apiKey := os.Getenv("API_KEY")
+	if !validAPIKey(apiKey) {
+		return serverConfig{}, fmt.Errorf("API_KEY is required and must be a nonempty Bearer token without whitespace")
+	}
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -44,11 +54,15 @@ func loadServerConfig() (serverConfig, error) {
 			return serverConfig{}, fmt.Errorf("SHUTDOWN_TIMEOUT must be a positive duration, for example 10s")
 		}
 	}
-	return serverConfig{address: ":" + port, maxBodyBytes: int64(maxBody), shutdownTimeout: timeout}, nil
+	return serverConfig{address: ":" + port, apiKey: apiKey, maxBodyBytes: int64(maxBody), shutdownTimeout: timeout}, nil
 }
 
+// routeHandlers supplies CRUD handlers; nil entries leave their routes unregistered.
 type routeHandlers struct{ create, read, update, delete http.Handler }
 
+// registerRoutes installs public endpoints and supplied CRUD handlers.
+// Create and update bodies are limited before reaching their handlers.
+// Authentication is applied separately by newCacheServer around the whole mux.
 func registerRoutes(handlers routeHandlers, maxBodyBytes int64) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /swagger/{$}", func(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +77,13 @@ func registerRoutes(handlers routeHandlers, maxBodyBytes int64) *http.ServeMux {
 			log.Printf("writing response: %v", err)
 		}
 	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := fmt.Fprintln(w, `{"status":"ok"}`); err != nil {
+			log.Printf("writing response: %v", err)
+		}
+	})
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := fmt.Fprint(w, "Hello, World!"); err != nil {
 			log.Printf("writing response: %v", err)
 		}
@@ -82,6 +102,9 @@ func registerRoutes(handlers routeHandlers, maxBodyBytes int64) *http.ServeMux {
 	}
 	return mux
 }
+
+// limitBody buffers at most limit bytes and restores the body for the handler.
+// Oversized bodies return 413; other read failures return 400 without calling next.
 func limitBody(next http.Handler, limit int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, limit)
@@ -101,13 +124,14 @@ func limitBody(next http.Handler, limit int64) http.Handler {
 }
 
 // recoverPanics turns a panic in a handler into a generic 500 response,
-// so the client gets an answer and the server keeps serving other requests.
-func recoverPanics(next http.Handler) http.Handler {
+// so later requests can still be served.
+func recoverPanics(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if value := recover(); value != nil {
-				// The panic details stay in the server logs.
-				log.Printf("panic while serving %s %s: %v", r.Method, r.URL.Path, value)
+				// The panic value and the raw URL may contain keys, values or secrets:
+				// only the request ID is logged, to find the matching request event.
+				logger.Error("handler panic recovered", "request_id", w.Header().Get("X-Request-ID"))
 				writeError(w, http.StatusInternalServerError, "internal server error")
 			}
 		}()
@@ -115,14 +139,28 @@ func recoverPanics(next http.Handler) http.Handler {
 	})
 }
 
+// CacheServer serves a shared cache service over HTTP and supports graceful shutdown.
 type CacheServer struct {
 	service    *cache.CacheService
 	httpServer *http.Server
 }
 
+// newCacheServer serves the routes with the default logger.
 func newCacheServer(config serverConfig, service *cache.CacheService) *CacheServer {
-	return &CacheServer{service: service, httpServer: &http.Server{Addr: config.address, Handler: recoverPanics(registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service), update: handleUpdate(service), delete: handleDelete(service)}, config.maxBodyBytes))}}
+	return &CacheServer{service: service, httpServer: &http.Server{Addr: config.address, Handler: serverHandler(config, service, slog.Default())}}
 }
+
+// serverHandler wraps routing with request logging, panic recovery and authentication.
+// Logging comes first so refused and recovered requests are logged with their real status.
+// Authentication runs before route matching or body reads, so unlisted endpoints
+// and future routes require credentials unless explicitly made public.
+func serverHandler(config serverConfig, service *cache.CacheService, logger *slog.Logger) http.Handler {
+	routes := registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service), update: handleUpdate(service), delete: handleDelete(service)}, config.maxBodyBytes)
+	return logRequests(logger, routes, recoverPanics(logger, authenticate(routes, config.apiKey)))
+}
+
+// Serve accepts requests on listener until shutdown or a serving error.
+// A normal shutdown returns nil instead of http.ErrServerClosed.
 func (s *CacheServer) Serve(listener net.Listener) error {
 	err := s.httpServer.Serve(listener)
 	if errors.Is(err, http.ErrServerClosed) {
@@ -131,6 +169,8 @@ func (s *CacheServer) Serve(listener net.Listener) error {
 	return err
 }
 
+// ListenAndServe binds the configured TCP address and delegates to Serve.
+// Bind failures include the address to help diagnose startup errors.
 func (s *CacheServer) ListenAndServe() error {
 	listener, err := net.Listen("tcp", s.httpServer.Addr)
 	if err != nil {
@@ -139,4 +179,6 @@ func (s *CacheServer) ListenAndServe() error {
 	return s.Serve(listener)
 }
 
+// Shutdown stops accepting connections and waits for active requests to finish.
+// If ctx expires first, it returns the context error.
 func (s *CacheServer) Shutdown(ctx context.Context) error { return s.httpServer.Shutdown(ctx) }

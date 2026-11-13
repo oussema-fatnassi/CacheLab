@@ -4,13 +4,40 @@ info:
   version: 0.1.0
   description: |
     Cache clé/valeur en mémoire.
+    Les routes CRUD exigent Authorization: Bearer <clé privée>, configurée par API_KEY.
+    Une authentification absente ou incorrecte est refusée avant la lecture du corps et l'accès au stockage.
+    /metrics est également protégé, mais l'exporteur sera ajouté par OBS-01 : avec une clé valide, ce chemin renvoie actuellement 404.
     Toutes les erreurs utilisent le même format JSON : `{"error": "message"}`.
     Une erreur inattendue renvoie 500 avec un message générique, sans détail interne.
+    Chaque réponse contient un en-tête X-Request-ID, repris dans les journaux du serveur pour retrouver la requête.
 servers:
   - url: /
     description: Serveur courant
+security:
+  - bearerAuth: []
 
 paths:
+  /health:
+    get:
+      summary: Vérifier que le serveur répond
+      description: Route publique sans donnée métier ni contenu du cache.
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Le serveur répond.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+              example:
+                status: ok
   /keys:
     post:
       summary: Créer une paire clé/valeur
@@ -30,6 +57,8 @@ paths:
       responses:
         '201':
           description: Clé créée. La réponse n'a pas de corps.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '400':
           description: JSON invalide (mal formé, champ manquant, inconnu, null ou de mauvais type, données après l'objet), clé vide ou trop longue, ou valeur trop volumineuse.
           content:
@@ -85,6 +114,8 @@ paths:
               example:
                 key: name
                 value: Test
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '400':
           $ref: '#/components/responses/InvalidKey'
         '404':
@@ -122,6 +153,8 @@ paths:
       responses:
         '200':
           description: Valeur remplacée. La réponse n'a pas de corps.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '400':
           description: JSON invalide (mal formé, champ manquant, inconnu, null ou de mauvais type, données après l'objet), clé trop longue ou valeur trop volumineuse.
           content:
@@ -168,6 +201,8 @@ paths:
       responses:
         '204':
           description: Clé supprimée. La réponse n'a pas de corps.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '400':
           $ref: '#/components/responses/InvalidKey'
         '404':
@@ -182,7 +217,25 @@ paths:
           $ref: '#/components/responses/InternalError'
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Clé privée API_KEY fournie à l'exécution. Saisir la clé seule dans Authorize.
   responses:
+    Unauthorized:
+      description: Clé Bearer absente ou incorrecte, ou en-tête Authorization mal formé. Aucun corps lu ni accès au stockage.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          example: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: unauthorized
     InvalidKey:
       description: Clé trop longue.
       content:

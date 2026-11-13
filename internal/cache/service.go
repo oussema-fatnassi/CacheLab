@@ -27,6 +27,7 @@ func NewCacheService(table Table, maxKeyBytes, maxValueBytes int) *CacheService 
 	return &CacheService{table: table, maxKeyBytes: maxKeyBytes, maxValueBytes: maxValueBytes}
 }
 
+// validateKey rejects empty keys and keys larger than the configured byte limit.
 func (s *CacheService) validateKey(key string) error {
 	if len(key) == 0 || len(key) > s.maxKeyBytes {
 		return ErrInvalidKey
@@ -34,6 +35,7 @@ func (s *CacheService) validateKey(key string) error {
 	return nil
 }
 
+// validateValue permits empty values and enforces the configured byte limit.
 func (s *CacheService) validateValue(value string) error {
 	if len(value) > s.maxValueBytes {
 		return ErrValueTooLarge

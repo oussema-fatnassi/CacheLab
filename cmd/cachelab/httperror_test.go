@@ -42,9 +42,9 @@ func TestErrorResponsesUseCommonEnvelope(t *testing.T) {
 	if err := service.Create("name", "s3cr3t"); err != nil {
 		t.Fatal(err)
 	}
-	server := newCacheServer(serverConfig{maxBodyBytes: 64}, service).httpServer.Handler
+	server := newCacheServer(serverConfig{apiKey: testAPIKey, maxBodyBytes: 64}, service).httpServer.Handler
 	// failingTable fails with "storage failure", an internal detail to keep hidden.
-	failing := newCacheServer(serverConfig{maxBodyBytes: 64}, cache.NewCacheService(failingTable{}, 4, 8)).httpServer.Handler
+	failing := newCacheServer(serverConfig{apiKey: testAPIKey, maxBodyBytes: 64}, cache.NewCacheService(failingTable{}, 4, 8)).httpServer.Handler
 
 	tests := []struct {
 		name               string
@@ -63,7 +63,8 @@ func TestErrorResponsesUseCommonEnvelope(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			tt.handler.ServeHTTP(recorder, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))
+			// Valid credentials let each case reach the error layer under test.
+			tt.handler.ServeHTTP(recorder, authorizedRequest(tt.method, tt.path, strings.NewReader(tt.body)))
 			if recorder.Code != tt.want {
 				t.Fatalf("status = %d; want %d", recorder.Code, tt.want)
 			}
@@ -85,10 +86,10 @@ func TestErrorResponsesUseCommonEnvelope(t *testing.T) {
 
 func TestServerRecoversFromHandlerPanic(t *testing.T) {
 	// Without a service, the create handler panics on a nil pointer.
-	handler := newCacheServer(serverConfig{maxBodyBytes: 64}, nil).httpServer.Handler
+	handler := newCacheServer(serverConfig{apiKey: testAPIKey, maxBodyBytes: 64}, nil).httpServer.Handler
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/keys", strings.NewReader(`{"key": "k", "value": "v"}`)))
+	handler.ServeHTTP(recorder, authorizedRequest(http.MethodPost, "/keys", strings.NewReader(`{"key": "k", "value": "v"}`)))
 	var body errorResponse
 	if recorder.Code != http.StatusInternalServerError || json.Unmarshal(recorder.Body.Bytes(), &body) != nil || body.Error != "internal server error" {
 		t.Fatalf("response = %d %q; want 500 with the generic JSON error", recorder.Code, recorder.Body.String())
