@@ -36,5 +36,8 @@ go.work.sum
 # Local build output
 /bin/
 
+# Generated load-test reports
+/results/
+
 .DS_Store
 .vscode/*

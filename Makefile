@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: build test lint server client cover
+.PHONY: build test lint server client loadtest cover
 
 build:
 	go build -o bin/cachelab ./cmd/cachelab
@@ -17,6 +17,9 @@ server:
 
 client:
 	go run ./cmd/client
+
+loadtest:
+	go run ./cmd/loadtest $(ARGS)
 
 cover:
 	go test -coverprofile=coverage.out ./...

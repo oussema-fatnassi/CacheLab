@@ -94,7 +94,54 @@ Autres commandes : `make build` construit `bin/cachelab`, `make test` exécute l
 
 Le [protocole PERF-01-A](docs/performance-protocol.md) propose une comparaison simple : insérer puis lire 1 000, 10 000 et 100 000 clés, avec 16 puis 1 024 buckets initiaux. Le [modèle de rapport](docs/performance-report-template.md) permet de noter les temps et les erreurs.
 
-Le client automatisé relève du ticket QA-02-A. Aucun résultat n’est encore mesuré. Garder les mêmes conditions entre configurations ; les mesures finales doivent envoyer l'en-tête Bearer sur chaque requête CRUD.
+Le client automatisé QA-02-A se lance depuis la racine, avec le serveur démarré dans un autre terminal :
+
+```bash
+make loadtest ARGS="-count 1000 -label buckets-16"
+```
+
+Make charge `API_KEY` et `PORT` depuis `.env`. Par défaut, le client insère 1 000 clés, vérifie toutes les valeurs hors chronométrage, puis mesure 1 000 lectures choisies aléatoirement avec une graine fixe. Il utilise un seul client séquentiel. Le terminal affiche temps, débit et P50/P95/P99 ; un rapport JSON horodaté est créé dans `results/`, avec les paramètres, erreurs, latences individuelles et quatre exports `/metrics` (avant/après insertion et lecture).
+
+**Redémarrer le serveur avec un cache vide avant chaque essai** : les clés sont `bench-0`, `bench-1`, etc. Le client ne supprime aucune donnée. Une seconde exécution sans redémarrage échoue sur les doublons. Les vérifications et les quatre collectes ajoutent N + 4 requêtes aux 2N opérations chronométrées.
+
+Pour changer la taille du jeu de données et le fichier de sortie :
+
+```bash
+make loadtest ARGS="-count 10000 -value-bytes 100 -label buckets-16 -output results/16-10000-essai1.json"
+```
+
+Pour comparer 16 et 1 024 buckets initiaux, modifier `CACHE_BUCKET_COUNT` dans `.env`, redémarrer le serveur, puis relancer avec le bon `-label`. Le label est une indication fournie par l’utilisateur, pas une vérification de la configuration serveur. `-server-commit` permet d’indiquer le commit réellement testé. Garder les mêmes conditions de journalisation et d’authentification.
+
+`-url` permet de choisir un autre serveur et `-timeout` le délai par requête. Les rapports existants ne sont jamais écrasés. Une erreur HTTP, une valeur incorrecte ou une collecte de métriques en échec conserve un rapport partiel avec `success: false` et termine la commande en échec. Ne pas utiliser ces essais pour comparer les vitesses.
+
+Les tests du client s’exécutent avec :
+
+```bash
+go test -race -v ./cmd/loadtest
+```
+
+Pour activer un scénario plus complet, les options restent facultatives :
+
+```bash
+make loadtest ARGS="-count 10000 -seed 42 -concurrency 8 -rate 1000 -warmup 2s -duration 10s -miss-percent 10 -label buckets-16"
+```
+
+| Option | Valeur par défaut | Rôle |
+| --- | --- | --- |
+| `-seed` | 42 | Reproduire la sélection des lectures ; les clés insérées restent `bench-0`, etc. |
+| `-concurrency` | 1 | Limiter les requêtes simultanées ; la vérification exhaustive reste obligatoire. |
+| `-rate` | 0 | Débit global proposé pour les lectures ; 0 signifie sans limitation. |
+| `-warmup` | 0 | Durée de lectures préparatoires, exclues des mesures. |
+| `-duration` | 0 | Fenêtre de lectures mesurées ; 0 conserve N lectures, sinon le nombre dépend du débit et de la durée. |
+| `-miss-percent` | 0 | Probabilité de lire une clé volontairement absente, attendue en `404`. |
+
+Un débit non nul planifie des créneaux indépendamment des réponses. Si la limite de concurrence est atteinte, le créneau est compté comme non envoyé (`unsent`), sans file d’attente illimitée. Les retards de départ sont conservés ; `delayed_over_1ms` compte ceux dépassant 1 ms. Une saturation ou un arrêt avant tous les créneaux prévus met le rapport en échec, tout en conservant les résultats partiels. Sans débit imposé, le client envoie dès qu’un worker est disponible.
+
+Les groupes `POST`, `GET_hit` et `GET_miss` séparent compteurs, statuts et percentiles. Les `404` volontaires sont des succès ; une clé supposée présente mais absente reste une erreur. Les percentiles utilisent le rang le plus proche sur les réponses correctes uniquement, sans masquer les compteurs d’échecs. Les valeurs moyennes correspondent désormais aux latences individuelles ; `total_ms` inclut l’ordonnancement et l’attente finale des requêtes.
+
+Le débit réussi utilise toute la durée de la phase, attente finale comprise ; `offered_rps` reste le débit demandé, jamais présenté comme une mesure. `scheduling_window_ms` et `drain_ms` distinguent la fenêtre d’envoi et l’attente finale. Les mesures HTTP ne prouvent pas une complexité O(1).
+
+Chaque phase conserve au maximum un million de requêtes. Un scénario sans débit imposé qui atteint cette limite avant sa durée prévue échoue explicitement. La génération des valeurs est limitée à 256 Mio. Garder exactement les mêmes paramètres pour comparer deux configurations et conserver chaque répétition séparément, sans moyenner les percentiles.
 
 ## Journaux
 
