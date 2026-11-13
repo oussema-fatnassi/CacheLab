@@ -7,7 +7,15 @@ info:
     Les routes CRUD exigent Authorization: Bearer <clé privée>, configurée par API_KEY.
     Une authentification absente ou incorrecte est refusée avant la lecture du corps et l'accès au stockage.
     /metrics est également protégé : il exporte les compteurs du serveur au format texte Prometheus.
-    Toutes les erreurs utilisent le même format JSON : `{"error": "message"}`.
+    Les erreurs produites par l'application, y compris le routage, utilisent le format JSON `{"error": "message"}`.
+    Après authentification, une route inconnue renvoie 404 avec `{"error":"route not found"}` ;
+    une méthode non autorisée renvoie 405 avec `{"error":"method not allowed"}` et l'en-tête Allow.
+    Par exemple, GET /unknown authentifié renvoie 404 ; GET /keys authentifié renvoie 405 avec Allow: POST.
+    Une clé absente sur GET /keys/{key} reste une erreur 404 distincte : `{"error":"key not found"}`.
+    Sans authentification valide, ces chemins protégés renvoient d'abord 401.
+    Une cible de requête `*` rejetée par le routeur renvoie 400 avec `{"error":"bad request"}`.
+    Les réponses HEAD conservent les en-têtes et le statut, sans corps HTTP.
+    Les erreurs de protocole rejetées par net/http avant l'application ne sont pas couvertes par ce format.
     Une erreur inattendue renvoie 500 avec un message générique, sans détail interne.
     Chaque réponse contient un en-tête X-Request-ID, repris dans les journaux du serveur pour retrouver la requête.
 servers:
