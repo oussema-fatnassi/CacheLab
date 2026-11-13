@@ -96,6 +96,28 @@ Le [protocole PERF-01-A](docs/performance-protocol.md) propose une comparaison s
 
 Le client automatisé relève du ticket QA-02-A. Aucun résultat n’est encore mesuré. Garder les mêmes conditions entre configurations ; les mesures finales doivent envoyer l'en-tête Bearer sur chaque requête CRUD.
 
+## Journaux
+
+Le serveur écrit ses journaux en JSON sur la sortie standard, un événement par ligne (`docker compose logs` les affiche). Au démarrage, l'événement `logging configured` enregistre la configuration : format JSON, niveau `info`, sortie standard. Elle est identique pour toutes les variantes du moteur.
+
+Chaque requête produit un événement `http request` :
+
+```json
+{"time":"2026-11-13T15:12:35.27+01:00","level":"INFO","msg":"http request","method":"GET","route":"GET /keys/{key}","status":404,"duration_ms":0.08,"request_id":"TUAJFIFWXLFPATKHKFQYE7LYUD"}
+```
+
+| Champ | Contenu |
+| --- | --- |
+| `method` | Méthode HTTP |
+| `route` | Motif de la route (`GET /keys/{key}`), jamais l'URL réelle ; vide si aucune route ne correspond |
+| `status` | Code réellement renvoyé, y compris pour une requête refusée (`401`, `400`, `413`…) ou une panic récupérée (`500`) |
+| `duration_ms` | Durée de traitement côté serveur, en millisecondes |
+| `request_id` | Identifiant aléatoire, également renvoyé au client dans l'en-tête `X-Request-ID` |
+
+Les journaux ne contiennent jamais l'URL brute (donc ni les clés ni les paramètres), les en-têtes (dont `Authorization`), les corps (donc ni les valeurs) ni le contenu d'une panic : une panic récupérée produit seulement l'événement `handler panic recovered` avec son `request_id`. Le JSON échappe les retours à la ligne, si bien qu'une entrée ne peut pas créer un faux événement.
+
+Pendant une campagne de performance, conserver l'événement `logging configured` et le volume de journaux (nombre d'événements `http request`) ; voir le [protocole](docs/performance-protocol.md).
+
 ## Documentation de l'API (Swagger)
 
 La spécification OpenAPI des routes se trouve dans `api/openapi.yaml` et est intégrée au serveur lors de sa compilation. Après avoir lancé le serveur localement ou avec Docker Compose, ouvrir `http://localhost:8080/swagger/` (adapter le port à `PORT`).

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strconv"
@@ -49,6 +50,12 @@ func newApplication() (*application, error) {
 }
 
 func main() {
+	// One JSON event per line on standard output, with the same settings for every
+	// engine variant. log.Printf and log.Fatal also go through this JSON logger.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	// Recorded at startup so performance campaigns know the logging configuration.
+	slog.Info("logging configured", "format", "json", "log_level", "info", "output", "stdout")
+
 	config, err := loadServerConfig()
 	if err != nil {
 		log.Fatal(err)

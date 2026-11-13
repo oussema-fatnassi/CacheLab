@@ -41,6 +41,7 @@ Répéter chaque cas trois fois, en redémarrant le serveur à chaque essai. Con
 - Temps moyen par opération côté client : durée de la phase / N. Ce temps inclut HTTP et le travail du client ; il ne correspond pas au seul hachage.
 - Opérations réussies, réponses inattendues, erreurs de connexion et valeurs incorrectes. Un essai en échec ne permet pas de comparer valablement les vitesses.
 - Date, commit Git, version de Go, machine/système, mode de lancement et paramètres d’authentification et de journalisation. Ne jamais enregistrer les credentials.
+- Journalisation : l’événement `logging configured` écrit au démarrage et le volume de journaux de l’essai, c’est-à-dire le nombre d’événements `http request` (par exemple `grep -c '"msg":"http request"'` sur la sortie du serveur). Garder la même configuration pour A et B : une différence de journalisation ne doit pas être attribuée au moteur.
 
 Utiliser le [modèle de rapport](performance-report-template.md). Mesurer les performances sans `-race` ; exécuter les tests de correction et de détection des courses séparément. Utiliser un binaire serveur déjà compilé pour exclure la compilation et le démarrage des mesures.
 
