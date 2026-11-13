@@ -27,14 +27,24 @@ jobs:
           fi
       - name: Test with race detector
         run: go test -race -count=1 ./...
+      - name: Report production coverage (advisory target of 80%)
+        run: make cover
       - name: Vet
         run: go vet ./...
       - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.15.0
       - name: Build
         run: go build ./...
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-coverage
+          path: coverage.out
+          if-no-files-found: ignore
+          retention-days: 7
 
   windows-loadtest:
     name: windows-loadtest
