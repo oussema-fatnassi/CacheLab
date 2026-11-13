@@ -54,11 +54,13 @@ func TestErrorResponsesUseCommonEnvelope(t *testing.T) {
 	}{
 		{"invalid JSON", server, http.MethodPost, "/keys", `{"key":`, http.StatusBadRequest},
 		{"invalid key", server, http.MethodGet, "/keys/abcde", "", http.StatusBadRequest},
+		{"delete invalid key", server, http.MethodDelete, "/keys/abcde", "", http.StatusBadRequest},
 		{"value too large", server, http.MethodPut, "/keys/name", `{"value": "123456789"}`, http.StatusBadRequest},
 		{"missing key", server, http.MethodDelete, "/keys/none", "", http.StatusNotFound},
 		{"existing key", server, http.MethodPost, "/keys", `{"key": "name", "value": "other"}`, http.StatusConflict},
 		{"body too large", server, http.MethodPost, "/keys", `{"key": "new", "value": "` + strings.Repeat("x", 64) + `"}`, http.StatusRequestEntityTooLarge},
 		{"storage failure", failing, http.MethodPost, "/keys", `{"key": "new", "value": "v"}`, http.StatusInternalServerError},
+		{"update storage failure", failing, http.MethodPut, "/keys/name", `{"value": "v"}`, http.StatusInternalServerError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
