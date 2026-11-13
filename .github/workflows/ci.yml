@@ -35,3 +35,17 @@ jobs:
           version: latest
       - name: Build
         run: go build ./...
+
+  windows-loadtest:
+    name: windows-loadtest
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test load-test client and Windows measurement clock
+        run: go test -count=1 ./cmd/loadtest
+      - name: Vet Windows client
+        run: go vet ./cmd/loadtest

@@ -143,6 +143,10 @@ Le débit réussi utilise toute la durée de la phase, attente finale comprise ;
 
 Chaque phase conserve au maximum un million de requêtes. Un scénario sans débit imposé qui atteint cette limite avant sa durée prévue échoue explicitement. La génération des valeurs est limitée à 256 Mio. Garder exactement les mêmes paramètres pour comparer deux configurations et conserver chaque répétition séparément, sans moyenner les percentiles.
 
+Sous Windows, les durées sont mesurées avec `QueryPerformanceCounter`, le compteur haute résolution recommandé pour les intervalles courts. macOS et Linux conservent l’horloge monotone de Go. Le terminal affiche la source et le rapport indique `latency_clock`, sa fréquence et `report_version: 3`. Les unités restent les nanosecondes dans les échantillons et les millisecondes à l’affichage ; cela ne garantit pas une précision d’une nanoseconde.
+
+Si un ancien rapport Windows contient une majorité d’échantillons exactement nuls, refaire les mesures avec cette version : ajouter des décimales ou changer d’unité ne corrige pas les données enregistrées. Une panne du compteur est signalée par `timing_errors` et invalide l’essai. Cette correction ne change pas les délais HTTP ni les timers d’envoi ; elle ne supprime donc pas les requêtes non envoyées ou retardées. Référence : [Microsoft — mesure des intervalles avec QPC](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps).
+
 ## Journaux
 
 Le serveur écrit ses journaux en JSON sur la sortie standard, un événement par ligne (`docker compose logs` les affiche). Au démarrage, l'événement `logging configured` enregistre la configuration : format JSON, niveau `info`, sortie standard. Elle est identique pour toutes les variantes du moteur.
