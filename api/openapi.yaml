@@ -6,7 +6,7 @@ info:
     Cache clé/valeur en mémoire.
     Les routes CRUD exigent Authorization: Bearer <clé privée>, configurée par API_KEY.
     Une authentification absente ou incorrecte est refusée avant la lecture du corps et l'accès au stockage.
-    /metrics est également protégé, mais l'exporteur sera ajouté par OBS-01 : avec une clé valide, ce chemin renvoie actuellement 404.
+    /metrics est également protégé : il exporte les compteurs du serveur au format texte Prometheus.
     Toutes les erreurs utilisent le même format JSON : `{"error": "message"}`.
     Une erreur inattendue renvoie 500 avec un message générique, sans détail interne.
     Chaque réponse contient un en-tête X-Request-ID, repris dans les journaux du serveur pour retrouver la requête.
@@ -38,6 +38,28 @@ paths:
                     enum: [ok]
               example:
                 status: ok
+  /metrics:
+    get:
+      summary: Exporter les métriques du serveur
+      description: |
+        Compteurs de requêtes (par motif de route et code), hits et misses de lecture, erreurs internes (5xx),
+        histogramme de durée côté serveur (en secondes) et mémoire du processus Go (en octets).
+        Les labels ne contiennent ni clé, ni valeur, ni secret. Unités et bornes : voir la section « Métriques » du README.
+        Ticket : CL-142 (OBS-01-A).
+      operationId: metrics
+      responses:
+        '200':
+          description: Métriques au format texte Prometheus.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP cachelab_cache_hits_total Reads (GET /keys/{key}) that found the key.
+                # TYPE cachelab_cache_hits_total counter
+                cachelab_cache_hits_total 2
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /keys:
     post:
       summary: Créer une paire clé/valeur
