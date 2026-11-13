@@ -21,6 +21,7 @@ type HashTable struct {
 	size          int
 	maxLoadFactor float64
 	growthFactor  int
+	hashKey       func(string) uint64
 }
 
 // NewHashTable uses a load threshold of 0.75 and doubles capacity when exceeded.
@@ -44,7 +45,12 @@ func NewHashTableWithConfig(bucketCount int, maxLoadFactor float64, growthFactor
 		buckets:       make([]*CacheEntry, bucketCount),
 		maxLoadFactor: maxLoadFactor,
 		growthFactor:  growthFactor,
+		hashKey:       hash,
 	}
+}
+
+func (table *HashTable) bucketIndex(key string, bucketCount int) int {
+	return int(table.hashKey(key) % uint64(bucketCount))
 }
 
 // Create inserts a new entry.
@@ -53,7 +59,7 @@ func (table *HashTable) Create(key, value string) error {
 	table.mu.Lock()
 	defer table.mu.Unlock()
 
-	index := bucketIndex(key, len(table.buckets))
+	index := table.bucketIndex(key, len(table.buckets))
 
 	for entry := table.buckets[index]; entry != nil; entry = entry.next {
 		if entry.key == key {
@@ -83,7 +89,7 @@ func (table *HashTable) resize() {
 		for entry != nil {
 			// Save the old link before moving this entry into its new chain.
 			next := entry.next
-			index := bucketIndex(entry.key, len(buckets))
+			index := table.bucketIndex(entry.key, len(buckets))
 			entry.next = buckets[index]
 			buckets[index] = entry
 			entry = next
@@ -99,7 +105,7 @@ func (table *HashTable) Read(key string) (string, bool) {
 	table.mu.Lock()
 	defer table.mu.Unlock()
 
-	index := bucketIndex(key, len(table.buckets))
+	index := table.bucketIndex(key, len(table.buckets))
 
 	for entry := table.buckets[index]; entry != nil; entry = entry.next {
 		if entry.key == key {
@@ -116,7 +122,7 @@ func (table *HashTable) Update(key, value string) error {
 	table.mu.Lock()
 	defer table.mu.Unlock()
 
-	index := bucketIndex(key, len(table.buckets))
+	index := table.bucketIndex(key, len(table.buckets))
 
 	for entry := table.buckets[index]; entry != nil; entry = entry.next {
 		if entry.key == key {
@@ -134,7 +140,7 @@ func (table *HashTable) Delete(key string) bool {
 	table.mu.Lock()
 	defer table.mu.Unlock()
 
-	index := bucketIndex(key, len(table.buckets))
+	index := table.bucketIndex(key, len(table.buckets))
 
 	var previous *CacheEntry
 	for entry := table.buckets[index]; entry != nil; entry = entry.next {

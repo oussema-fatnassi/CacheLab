@@ -15,7 +15,7 @@ func TestHashTableCRUD(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	// Read the entry and verify its value.
+	// read the entry and verify its value
 	value, found := table.Read("name")
 	if !found || value != "Test" {
 		t.Fatalf("Read = (%q, %t); want (%q, true)",
@@ -23,7 +23,7 @@ func TestHashTableCRUD(t *testing.T) {
 	}
 	t.Logf("After Create: name = %q", value)
 
-	// Update the existing entry.
+	// update the existing entry
 	if err := table.Update("name", "Alice"); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestHashTableCRUD(t *testing.T) {
 	}
 	t.Logf("After Update: name = %q", value)
 
-	// Delete the entry.
+	// delete the entry
 	if !table.Delete("name") {
 		t.Fatal("Delete returned false for an existing key")
 	}
@@ -88,7 +88,7 @@ func TestHashTableMissingKey(t *testing.T) {
 }
 
 func TestHashTableCollision(t *testing.T) {
-	// Insertion at the head produces this chain: country -> city -> name.
+	// insertion at the head produces this chain: country -> city -> name
 	entries := []struct {
 		key   string
 		value string
@@ -100,7 +100,7 @@ func TestHashTableCollision(t *testing.T) {
 
 	for _, target := range entries {
 		t.Run(target.key, func(t *testing.T) {
-			// Keep one bucket for this test to exercise every chain position.
+			// keep one bucket for this test to exercise every chain position
 			table := NewHashTableWithConfig(1, 4, 2)
 			for _, item := range entries {
 				if err := table.Create(item.key, item.value); err != nil {
@@ -108,7 +108,7 @@ func TestHashTableCollision(t *testing.T) {
 				}
 			}
 
-			// Every colliding key must retain its own value.
+			// every colliding key must retain its own value
 			for _, item := range entries {
 				value, found := table.Read(item.key)
 				if !found || value != item.value {
@@ -130,7 +130,7 @@ func TestHashTableCollision(t *testing.T) {
 				t.Fatal("Delete found a missing key in an occupied bucket")
 			}
 
-			// Each subtest updates a different chain position.
+			// each subtest updates a different chain position
 			if err := table.Update(target.key, "updated"); err != nil {
 				t.Fatal(err)
 			}
@@ -148,7 +148,7 @@ func TestHashTableCollision(t *testing.T) {
 				t.Fatalf("size = %d; want %d", table.size, len(entries))
 			}
 
-			// Delete the target and verify that the remaining chain survives.
+			// delete the target and verify that the remaining chain survives
 			if !table.Delete(target.key) {
 				t.Fatalf("Delete(%q) returned false", target.key)
 			}
@@ -186,7 +186,7 @@ func TestHashTableResizeThreshold(t *testing.T) {
 		}
 	}
 
-	// A duplicate must not change size or trigger growth at the threshold.
+	// a duplicate must not change size or trigger growth at the threshold
 	if err := table.Create("a", "duplicate"); !errors.Is(err, ErrKeyExists) {
 		t.Fatalf("got %v; want ErrKeyExists", err)
 	}
@@ -212,7 +212,7 @@ func TestHashTableResizeCollisions(t *testing.T) {
 	table := NewHashTable(4)
 	keys := make([]string, 0, 40)
 
-	// These keys collide at every capacity used here: 4, 8, 16, 32 and 64.
+	// These keys collide at every capacity used here: 4, 8, 16, 32 and 64
 	for i := 0; len(keys) < 40; i++ {
 		key := fmt.Sprintf("key:%d", i)
 		if bucketIndex(key, 64) == 0 {
@@ -224,7 +224,7 @@ func TestHashTableResizeCollisions(t *testing.T) {
 		if err := table.Create(key, "value:"+key); err != nil {
 			t.Fatal(err)
 		}
-		// Verify all prior entries after every insertion and possible resize.
+		// verify all prior entries after every insertion and possible resize
 		for _, stored := range keys[:i+1] {
 			if value, found := table.Read(stored); !found || value != "value:"+stored {
 				t.Fatalf("key %q lost or changed after insertion %d", stored, i+1)
@@ -235,7 +235,7 @@ func TestHashTableResizeCollisions(t *testing.T) {
 		t.Fatalf("capacity = %d, size = %d; want 64, %d", len(table.buckets), table.size, len(keys))
 	}
 
-	// Count physical entries too, detecting duplicates or cycles after relinking.
+	// count physical entries too, detecting duplicates or cycles after relinking.
 	seen := make(map[string]bool)
 	for index, entry := range table.buckets {
 		for ; entry != nil; entry = entry.next {
@@ -252,7 +252,7 @@ func TestHashTableResizeCollisions(t *testing.T) {
 		t.Fatalf("found %d physical entries; want %d", len(seen), len(keys))
 	}
 
-	// CRUD must still work after several resizes.
+	// crud must still work after several resizes
 	if err := table.Update(keys[0], "updated"); err != nil {
 		t.Fatal(err)
 	}
@@ -316,4 +316,66 @@ func TestHashTableInvalidResizeConfig(t *testing.T) {
 			NewHashTableWithConfig(4, config.load, config.growth)
 		})
 	}
+}
+
+// catch an ignored hash override, its omission in a CRUD path or resize,
+// and overrides leaking into another table's operations
+// TODO: Add equivalent verification for future custom engines, adapting their growth fixtures instead of assuming the chained engine's fourth-insert growth.
+func TestHashTableUsesInstanceHash(t *testing.T) {
+	calls := make(map[string]int)
+	table := newChainedTableWithHash(func(key string) uint64 {
+		calls[key]++
+		return 7
+	})
+	if err := table.Create("first", "value"); err != nil {
+		t.Fatal(err)
+	}
+	if calls["first"] == 0 {
+		t.Fatal("Create did not use the instance hash")
+	}
+	before := calls["first"]
+	requireTableRead(t, table, "first", "value", true)
+	if calls["first"] <= before {
+		t.Fatal("Read did not use the instance hash")
+	}
+	before = calls["first"]
+	if err := table.Update("first", "updated"); err != nil {
+		t.Fatal(err)
+	}
+	if calls["first"] <= before {
+		t.Fatal("Update did not use the instance hash")
+	}
+	for _, key := range []string{"second", "third"} {
+		if err := table.Create(key, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before = calls["first"]
+	if err := table.Create("fourth", "fourth"); err != nil {
+		t.Fatal(err)
+	}
+	if calls["first"] <= before {
+		t.Fatal("growth did not redistribute entries with the instance hash")
+	}
+	before = calls["first"]
+	if !table.Delete("first") {
+		t.Fatal("Delete returned false")
+	}
+	if calls["first"] <= before {
+		t.Fatal("Delete did not use the instance hash")
+	}
+	before = calls["first"]
+	for _, other := range []Table{
+		NewHashTable(4),
+		newChainedTableWithHash(func(string) uint64 { return 13 }),
+	} {
+		if err := other.Create("first", "independent"); err != nil {
+			t.Fatal(err)
+		}
+		requireTableRead(t, other, "first", "independent", true)
+	}
+	if calls["first"] != before {
+		t.Fatal("another instance used this table's hash")
+	}
+	requireTableRead(t, table, "second", "second", true)
 }
