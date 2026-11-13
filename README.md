@@ -88,7 +88,28 @@ Compose utilise le port défini dans `.env`, ou 8080 par défaut. Le service est
 
 `API_KEY` est obligatoire et injectée à l'exécution par Compose, sans argument de construction ni valeur par défaut dans l'image.
 
-Autres commandes : `make build` construit `bin/cachelab`, `make test` exécute les tests avec le détecteur de courses, `make lint` lance `go vet`, `gofmt -w .` formate les fichiers Go et `make cover` affiche la couverture.
+Autres commandes : `make build` construit `bin/cachelab`, `make test` exécute les tests avec le détecteur de courses, `make lint` lance `go vet`, `gofmt -w .` formate les fichiers Go et `make cover` affiche la couverture de production avec un avertissement non bloquant si elle est inférieure à 80 %.
+
+### Contrôles avant une PR
+
+La CI conserve le contrôle obligatoire `build-vet-lint` et vérifie formatage, tests avec `-race`, couverture, vet, golangci-lint v2.15.0 et compilation. Le job `windows-loadtest` vérifie également le client sous Windows. Les benchmarks et campagnes `make loadtest` restent séparés de la CI.
+
+L’objectif indicatif de 80 % concerne `./cmd/cachelab`, `./internal/cache` et `./api`, pondérés par le nombre d’instructions, pas par une moyenne des pourcentages des packages. Les clients, outils et suites de tests sont exclus de ce calcul ; leurs tests sont néanmoins exécutés par `go test -race -count=1 ./...`. Le profil `coverage.out` est disponible dans les artefacts GitHub Actions pendant sept jours.
+
+Avant de pousser, exécuter :
+
+```bash
+gofmt -l .
+golangci-lint run
+go vet ./...
+go build ./...
+make test
+make cover
+```
+
+`gofmt -l .` doit ne rien afficher ; la CI échoue si des fichiers sont listés. Pour installer la version du linter utilisée en CI, consulter [CONTRIBUTING.md](CONTRIBUTING.md). Les tests utilisent des clés fictives : aucune clé privée ou secret GitHub n’est nécessaire.
+
+La [fiche QA-05](docs/ci-quality-gate.md) précise l’objectif indicatif, les cas avec et sans avertissement et la protection de branche vérifiée.
 
 ## Cache vide après redémarrage
 
