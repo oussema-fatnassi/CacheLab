@@ -63,6 +63,7 @@ func TestErrorResponsesUseCommonEnvelope(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
+			// Valid credentials let each case reach the error layer under test.
 			tt.handler.ServeHTTP(recorder, authorizedRequest(tt.method, tt.path, strings.NewReader(tt.body)))
 			if recorder.Code != tt.want {
 				t.Fatalf("status = %d; want %d", recorder.Code, tt.want)
