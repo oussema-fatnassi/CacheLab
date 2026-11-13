@@ -69,6 +69,8 @@ func TestUnauthorizedCRUDNeverTouchesStorage(t *testing.T) {
 		{"PUT", "/keys/name", `{"value":"Alice"}`},
 		{"DELETE", "/keys/name", ""},
 	} {
+		// Reject ambiguous credentials as well as incorrect ones: extra spaces,
+		// comma-joined tokens, and duplicate headers must not authenticate.
 		for _, headers := range [][]string{
 			nil, {""}, {"Bearer"}, {"Bearer "}, {"Basic " + testAPIKey},
 			{"Bearer wrong-key"}, {"Bearer test-only-kez"}, {"Bearer  " + testAPIKey},
@@ -93,6 +95,7 @@ func TestUnauthorizedCRUDNeverTouchesStorage(t *testing.T) {
 	}
 }
 
+// unreadBody makes any attempt to consume an unauthenticated body observable.
 type unreadBody struct{ reads int }
 
 func (b *unreadBody) Read([]byte) (int, error) { b.reads++; return 0, http.ErrBodyReadAfterClose }
@@ -171,6 +174,7 @@ func TestHealthIsPublicAndContainsNoCacheData(t *testing.T) {
 }
 
 func TestMetricsIsProtectedBeforeExporterExists(t *testing.T) {
+	// An unregistered route must pass authentication before the mux returns 404.
 	server := authenticatedTestServer(t, &spyTable{})
 	for _, token := range []string{"", "Bearer wrong-key", "Bearer " + testAPIKey} {
 		request := httptest.NewRequest("GET", "/metrics", nil)
@@ -198,6 +202,8 @@ func TestOnlyExplicitPublicRoutesBypassAuthentication(t *testing.T) {
 			t.Fatalf("public %s %s = %d", route.method, route.path, response.Code)
 		}
 	}
+	// Public access matches exact paths and read methods, not path prefixes.
+	// Authentication also precedes the mux's path-cleaning redirect.
 	for _, route := range []struct{ method, path string }{
 		{"POST", "/health"}, {"POST", "/"}, {"GET", "/health/private"},
 		{"GET", "/swagger/private"}, {"GET", "/other"}, {"GET", "/keys//name"},
