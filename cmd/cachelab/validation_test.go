@@ -17,12 +17,13 @@ func (s *spyTable) Read(key string) (string, bool) { s.calls++; return "", false
 func (s *spyTable) Update(key, value string) error { s.calls++; return nil }
 func (s *spyTable) Delete(key string) bool         { s.calls++; return false }
 
-// sendWithLimits passes a request through the real routes with small limits:
+// sendWithLimits sends an authenticated request through the real middleware and
+// routes, so validation failures cannot be masked by a 401. It uses small limits:
 // keys up to 4 bytes, values up to 5 bytes and bodies up to 64 bytes.
 func sendWithLimits(table cache.Table, method, path, body string) *httptest.ResponseRecorder {
-	server := newCacheServer(serverConfig{maxBodyBytes: 64}, cache.NewCacheService(table, 4, 5))
+	server := newCacheServer(serverConfig{apiKey: testAPIKey, maxBodyBytes: 64}, cache.NewCacheService(table, 4, 5))
 	recorder := httptest.NewRecorder()
-	server.httpServer.Handler.ServeHTTP(recorder, httptest.NewRequest(method, path, strings.NewReader(body)))
+	server.httpServer.Handler.ServeHTTP(recorder, authorizedRequest(method, path, strings.NewReader(body)))
 	return recorder
 }
 

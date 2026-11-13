@@ -7,7 +7,8 @@ import (
 	"github.com/oussema-fatnassi/CacheLab/internal/cache"
 )
 
-// TestNewApplicationBuildsConfiguredService verifies that configuration reaches the service and its table.
+// TestNewApplicationBuildsConfiguredService checks that environment byte limits
+// reach the service while the configured table remains usable for CRUD operations.
 func TestNewApplicationBuildsConfiguredService(t *testing.T) {
 	t.Setenv("CACHE_BUCKET_COUNT", "2")
 	t.Setenv("MAX_KEY_BYTES", "4")
@@ -48,6 +49,7 @@ func TestNewApplicationRejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestAddressUsesConfiguredPort(t *testing.T) {
+	t.Setenv("API_KEY", testAPIKey)
 	t.Setenv("PORT", "8123")
 	config, err := loadServerConfig()
 	if err != nil {
@@ -59,6 +61,7 @@ func TestAddressUsesConfiguredPort(t *testing.T) {
 }
 
 func TestAddressDefaultsPort(t *testing.T) {
+	t.Setenv("API_KEY", testAPIKey)
 	t.Setenv("PORT", "")
 	config, err := loadServerConfig()
 	if err != nil {

@@ -1,6 +1,8 @@
 package cache
 
-// Table is the contract used by CacheService for storage operations.
+// Table is the storage contract used by CacheService.
+// Create returns ErrKeyExists for an existing key; Update returns ErrNotFound
+// for a missing key. Read and Delete report presence through their boolean result.
 type Table interface {
 	Create(key, value string) error
 	Read(key string) (string, bool)
@@ -8,18 +10,22 @@ type Table interface {
 	Delete(key string) bool
 }
 
-// CacheService validates inputs and delegates storage operations to a Table.
+// CacheService validates inputs before delegating storage operations to a Table.
+// Limits count bytes, not characters. Keys must be nonempty; values may be empty.
 type CacheService struct {
 	table         Table
 	maxKeyBytes   int
 	maxValueBytes int
 }
 
-// NewCacheService constructs a service with the supplied byte limits.
+// NewCacheService uses the supplied table and byte limits without changing them.
+// The caller is responsible for validating configuration and supplying a table
+// that supports concurrent access when the service is shared by HTTP handlers.
 func NewCacheService(table Table, maxKeyBytes, maxValueBytes int) *CacheService {
 	return &CacheService{table: table, maxKeyBytes: maxKeyBytes, maxValueBytes: maxValueBytes}
 }
 
+// validateKey rejects empty keys and keys larger than the configured byte limit.
 func (s *CacheService) validateKey(key string) error {
 	if len(key) == 0 || len(key) > s.maxKeyBytes {
 		return ErrInvalidKey
@@ -27,6 +33,7 @@ func (s *CacheService) validateKey(key string) error {
 	return nil
 }
 
+// validateValue permits empty values and enforces the configured byte limit.
 func (s *CacheService) validateValue(value string) error {
 	if len(value) > s.maxValueBytes {
 		return ErrValueTooLarge
@@ -34,7 +41,8 @@ func (s *CacheService) validateValue(value string) error {
 	return nil
 }
 
-// Create stores a new key and rejects an existing one.
+// Create validates key and value, then stores a new entry.
+// An existing key returns the table's ErrKeyExists without replacing its value.
 func (s *CacheService) Create(key, value string) error {
 	if err := s.validateKey(key); err != nil {
 		return err
@@ -45,7 +53,7 @@ func (s *CacheService) Create(key, value string) error {
 	return s.table.Create(key, value)
 }
 
-// Read returns the value associated with key.
+// Read validates key and returns its value, or ErrNotFound when it is absent.
 func (s *CacheService) Read(key string) (string, error) {
 	if err := s.validateKey(key); err != nil {
 		return "", err
@@ -57,7 +65,8 @@ func (s *CacheService) Read(key string) (string, error) {
 	return value, nil
 }
 
-// Update replaces the value of an existing key.
+// Update validates key and value, then replaces an existing entry's value.
+// The table returns ErrNotFound when the key is absent.
 func (s *CacheService) Update(key, value string) error {
 	if err := s.validateKey(key); err != nil {
 		return err
@@ -68,7 +77,7 @@ func (s *CacheService) Update(key, value string) error {
 	return s.table.Update(key, value)
 }
 
-// Delete removes an existing key.
+// Delete validates key and removes its entry, returning ErrNotFound if absent.
 func (s *CacheService) Delete(key string) error {
 	if err := s.validateKey(key); err != nil {
 		return err
