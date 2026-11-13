@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/oussema-fatnassi/CacheLab/internal/cache"
@@ -19,7 +19,7 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(errorResponse{Error: message}); err != nil {
-		log.Printf("writing error response: %v", err)
+		slog.Error("error response write failed", "request_id", w.Header().Get("X-Request-ID"))
 	}
 }
 
@@ -45,8 +45,8 @@ func httpError(err error) (int, string) {
 func writeServiceError(w http.ResponseWriter, err error) {
 	status, message := httpError(err)
 	if status == http.StatusInternalServerError {
-		// The real cause is kept in the server logs only.
-		log.Printf("unexpected service error: %v", err)
+		// Wrapped errors can contain client data; log the category only.
+		slog.Error("unexpected service error", "request_id", w.Header().Get("X-Request-ID"))
 	}
 	writeError(w, status, message)
 }

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/oussema-fatnassi/CacheLab/internal/cache"
@@ -71,7 +71,7 @@ func handleRead(service *cache.CacheService) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(readResponse{Key: key, Value: value}); err != nil {
-			log.Printf("writing response: %v", err)
+			slog.Error("response write failed", "request_id", w.Header().Get("X-Request-ID"))
 		}
 	}
 }

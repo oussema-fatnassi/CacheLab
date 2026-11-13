@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -54,18 +54,18 @@ func registerRoutes(handlers routeHandlers, maxBodyBytes int64) *http.ServeMux {
 	mux.HandleFunc("GET /swagger/{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if _, err := fmt.Fprint(w, `<!DOCTYPE html><html><head><title>CacheLab API</title><link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.34.1/swagger-ui.css"></head><body><div id="swagger-ui"></div><script src="https://unpkg.com/swagger-ui-dist@5.34.1/swagger-ui-bundle.js"></script><script>SwaggerUIBundle({url: '/swagger/openapi.yaml', dom_id: '#swagger-ui'});</script></body></html>`); err != nil {
-			log.Printf("writing response: %v", err)
+			slog.Error("response write failed", "request_id", w.Header().Get("X-Request-ID"))
 		}
 	})
 	mux.HandleFunc("GET /swagger/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 		if _, err := w.Write(api.OpenAPI); err != nil {
-			log.Printf("writing response: %v", err)
+			slog.Error("response write failed", "request_id", w.Header().Get("X-Request-ID"))
 		}
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := fmt.Fprint(w, "Hello, World!"); err != nil {
-			log.Printf("writing response: %v", err)
+			slog.Error("response write failed", "request_id", w.Header().Get("X-Request-ID"))
 		}
 	})
 	if handlers.create != nil {
@@ -106,8 +106,8 @@ func recoverPanics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if value := recover(); value != nil {
-				// The panic details stay in the server logs.
-				log.Printf("panic while serving %s %s: %v", r.Method, r.URL.Path, value)
+				// Panic payloads and raw paths may contain cached data or secrets.
+				slog.Error("handler panic recovered", "request_id", w.Header().Get("X-Request-ID"))
 				writeError(w, http.StatusInternalServerError, "internal server error")
 			}
 		}()
@@ -121,7 +121,11 @@ type CacheServer struct {
 }
 
 func newCacheServer(config serverConfig, service *cache.CacheService) *CacheServer {
-	return &CacheServer{service: service, httpServer: &http.Server{Addr: config.address, Handler: recoverPanics(registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service), update: handleUpdate(service), delete: handleDelete(service)}, config.maxBodyBytes))}}
+	mux := registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service), update: handleUpdate(service), delete: handleDelete(service)}, config.maxBodyBytes)
+	return &CacheServer{service: service, httpServer: &http.Server{
+		Addr:    config.address,
+		Handler: logRequests(slog.Default(), recoverPanics(mux)),
+	}}
 }
 func (s *CacheServer) Serve(listener net.Listener) error {
 	err := s.httpServer.Serve(listener)
