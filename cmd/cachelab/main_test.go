@@ -48,6 +48,7 @@ func TestNewApplicationRejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestAddressUsesConfiguredPort(t *testing.T) {
+	t.Setenv("API_KEY", testAPIKey)
 	t.Setenv("PORT", "8123")
 	config, err := loadServerConfig()
 	if err != nil {
@@ -59,6 +60,7 @@ func TestAddressUsesConfiguredPort(t *testing.T) {
 }
 
 func TestAddressDefaultsPort(t *testing.T) {
+	t.Setenv("API_KEY", testAPIKey)
 	t.Setenv("PORT", "")
 	config, err := loadServerConfig()
 	if err != nil {
