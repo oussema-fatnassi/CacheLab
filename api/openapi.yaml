@@ -6,6 +6,8 @@ info:
     Cache clé/valeur en mémoire.
     Toutes les erreurs utilisent le même format JSON : `{"error": "message"}`.
     Une erreur inattendue renvoie 500 avec un message générique, sans détail interne.
+    Chaque réponse porte un en-tête X-Request-ID généré par le serveur pour retrouver la requête dans les logs.
+    Un X-Request-ID fourni par le client est ignoré.
 servers:
   - url: /
     description: Serveur courant

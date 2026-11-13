@@ -71,6 +71,20 @@ Compose utilise le port défini dans `.env`, ou 8080 par défaut. Le service est
 
 Autres commandes : `make build` construit `bin/cachelab`, `make test` exécute les tests avec le détecteur de courses, `make lint` lance `go vet`, `gofmt -w .` formate les fichiers Go et `make cover` affiche la couverture.
 
+## Logs des requêtes
+
+Le serveur écrit ses logs au format JSON sur la sortie standard. Chaque requête produit un événement `http_request` contenant `method`, `route`, `status`, `duration_ms` et `request_id`, ainsi que les champs standards `time`, `level` et `msg` de `slog`.
+
+`route` est le motif de routage, par exemple `GET /keys/{key}`, et non l’URL réelle. Les corps, valeurs, clés complètes, paramètres d’URL et credentials ne sont pas journalisés. Les erreurs internes et panics produisent un message générique, sans leur contenu brut.
+
+Un identifiant est généré par le serveur pour chaque requête et renvoyé dans l’en-tête `X-Request-ID`. Un identifiant fourni par le client est ignoré. `duration_ms` mesure le traitement côté serveur, pas le temps réseau complet.
+
+Pour observer les logs, lancer `make server` puis envoyer des requêtes avec Swagger ou le client. Avec Docker, utiliser `docker compose logs -f cachelab`. Pour vérifier le middleware et le filtrage des données :
+
+```bash
+go test -race -v -count=1 ./cmd/cachelab -run '^(TestRequestLogging|TestResponseStatus)'
+```
+
 ## Documentation de l'API (Swagger)
 
 La spécification OpenAPI des routes se trouve dans `api/openapi.yaml` et est intégrée au serveur lors de sa compilation. Après avoir lancé le serveur localement ou avec Docker Compose, ouvrir `http://localhost:8080/swagger/` (adapter le port à `PORT`).
