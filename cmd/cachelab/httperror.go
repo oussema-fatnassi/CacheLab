@@ -23,6 +23,48 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	}
 }
 
+// jsonRoutingErrors replaces only the mux's generated 400, 404 and 405 responses.
+// Matched routes still use ServeHTTP to populate wildcard path values. An empty
+// pattern can also mean a path-cleaning redirect, which the writer passes through.
+func jsonRoutingErrors(routes *http.ServeMux) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, pattern := routes.Handler(r)
+		if pattern != "" {
+			routes.ServeHTTP(w, r)
+			return
+		}
+		routes.ServeHTTP(&routingErrorWriter{ResponseWriter: w}, r)
+	})
+}
+
+type routingErrorWriter struct {
+	http.ResponseWriter
+	replaced bool
+}
+
+func (w *routingErrorWriter) WriteHeader(status int) {
+	switch status {
+	case http.StatusBadRequest:
+		w.replaced = true
+		writeError(w.ResponseWriter, status, "bad request")
+	case http.StatusNotFound:
+		w.replaced = true
+		writeError(w.ResponseWriter, status, "route not found")
+	case http.StatusMethodNotAllowed:
+		w.replaced = true
+		writeError(w.ResponseWriter, status, "method not allowed")
+	default:
+		w.ResponseWriter.WriteHeader(status)
+	}
+}
+
+func (w *routingErrorWriter) Write(body []byte) (int, error) {
+	if w.replaced {
+		return len(body), nil
+	}
+	return w.ResponseWriter.Write(body)
+}
+
 // httpError maps a cache service error to its HTTP status and public message.
 // The message comes from the known error itself, never from a wrapped error,
 // so no internal detail reaches the client.
