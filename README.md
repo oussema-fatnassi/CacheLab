@@ -90,6 +90,25 @@ Compose utilise le port défini dans `.env`, ou 8080 par défaut. Le service est
 
 Autres commandes : `make build` construit `bin/cachelab`, `make test` exécute les tests avec le détecteur de courses, `make lint` lance `go vet`, `gofmt -w .` formate les fichiers Go et `make cover` affiche la couverture.
 
+## Cache vide après redémarrage
+
+CacheLab garde les données uniquement en mémoire : tout arrêt du serveur les efface (`Ctrl+C` sur `make server`, arrêt du processus, `docker compose restart` ou recréation du conteneur). Au redémarrage, le cache est **froid** : toutes les clés écrites avant renvoient `404`, même avec une clé API valide, tandis que les nouvelles entrées fonctionnent normalement.
+
+Le cache n'accède jamais à la base SQL de l'application : c'est l'application qui le remplit (stratégie *cache-aside*). Pour chaque lecture :
+
+1. `GET /keys/{key}` renvoie `200` : utiliser la valeur du cache ;
+2. `GET /keys/{key}` renvoie `404` : lire la donnée dans la base SQL, qui reste la source de vérité, puis l'enregistrer avec `POST /keys` pour les lectures suivantes. Un `409` à ce moment signifie qu'un autre client l'a déjà ajoutée : ce n'est pas une erreur.
+
+Juste après un redémarrage, les `404` sont donc nombreux et la base SQL plus sollicitée, le temps que le cache se remplisse à nouveau. La métrique `cachelab_cache_misses_total` permet de le suivre.
+
+Le test `TestCacheIsEmptyAfterProcessRestart` vérifie ce comportement avec un vrai redémarrage : il compile le serveur, le lance comme un processus séparé, enregistre une clé, arrête le processus, en démarre un nouveau sur le même port, puis vérifie que la clé renvoie `404` et que le CRUD fonctionne. Il s'exécute avec les autres tests, ou seul :
+
+```bash
+go test -v -count=1 ./cmd/cachelab -run TestCacheIsEmptyAfterProcessRestart
+```
+
+`go test -short` l'ignore, car il compile et démarre de vrais processus (quelques secondes). Quand d'autres moteurs de stockage seront ajoutés, répéter ce scénario pour chacun d'eux.
+
 ## Protocole de performance
 
 Le [protocole PERF-01-A](docs/performance-protocol.md) propose une comparaison simple : insérer puis lire 1 000, 10 000 et 100 000 clés, avec 16 puis 1 024 buckets initiaux. Le [modèle de rapport](docs/performance-report-template.md) permet de noter les temps et les erreurs.
