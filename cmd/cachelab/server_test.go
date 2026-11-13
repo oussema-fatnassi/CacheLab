@@ -38,6 +38,7 @@ func TestRoutesAndBodyLimit(t *testing.T) {
 		}
 	}
 	req, _ := http.NewRequest("POST", "/keys", strings.NewReader("123456"))
+	// Enforce the limit from bytes read even when the body length is unknown.
 	req.ContentLength = -1
 	w := &responseRecorder{header: make(http.Header)}
 	mux.ServeHTTP(w, req)
@@ -87,6 +88,7 @@ func TestServerShutdownWaitsForRequests(t *testing.T) {
 	<-started
 	shutdown := make(chan error, 1)
 	go func() { shutdown <- server.Shutdown(context.Background()) }()
+	// Keep the request blocked until shutdown has had a chance to wait for it.
 	select {
 	case err := <-shutdown:
 		t.Fatalf("shutdown returned before request completed: %v", err)
