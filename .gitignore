@@ -37,3 +37,4 @@ go.work.sum
 /bin/
 
 .DS_Store
+.vscode/*
