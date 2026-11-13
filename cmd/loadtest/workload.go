@@ -55,9 +55,10 @@ func executePhase(client *http.Client, cfg config, entries []entry, value, name 
 		phase.Operations = make(map[string]*operationStats)
 	}
 	var duration time.Duration
-	if name == "read" {
+	switch name {
+	case "read":
 		duration = cfg.Duration
-	} else if name == "warmup" {
+	case "warmup":
 		duration = cfg.Warmup
 	}
 	rate := 0.0
