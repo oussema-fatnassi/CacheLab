@@ -20,9 +20,9 @@ func (s *spyTable) Delete(key string) bool         { s.calls++; return false }
 // sendWithLimits passes a request through the real routes with small limits:
 // keys up to 4 bytes, values up to 5 bytes and bodies up to 64 bytes.
 func sendWithLimits(table cache.Table, method, path, body string) *httptest.ResponseRecorder {
-	server := newCacheServer(serverConfig{maxBodyBytes: 64}, cache.NewCacheService(table, 4, 5))
+	server := newCacheServer(serverConfig{apiKey: testAPIKey, maxBodyBytes: 64}, cache.NewCacheService(table, 4, 5))
 	recorder := httptest.NewRecorder()
-	server.httpServer.Handler.ServeHTTP(recorder, httptest.NewRequest(method, path, strings.NewReader(body)))
+	server.httpServer.Handler.ServeHTTP(recorder, authorizedRequest(method, path, strings.NewReader(body)))
 	return recorder
 }
 
