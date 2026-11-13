@@ -194,10 +194,10 @@ func executePhase(client *http.Client, cfg config, entries []entry, value, name 
 	if failure == "" {
 		failure = schedulerFailure
 	}
-	if failure == "" && rate > 0 && phase.NotScheduled > 0 {
+	if failure == "" && name != "warmup" && rate > 0 && phase.NotScheduled > 0 {
 		failure = "generator ended before all planned arrival slots were scheduled"
 	}
-	if failure == "" && unsent > 0 {
+	if failure == "" && name != "warmup" && unsent > 0 {
 		failure = "offered rate not sustained: some requests were not sent"
 	}
 	if phase.Timed {

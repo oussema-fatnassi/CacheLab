@@ -86,6 +86,9 @@ func main() {
 			fmt.Printf(" | %.3f ms total", phase.TotalMS)
 		} else {
 			fmt.Print(" | not timed")
+			if phase.Name == "warmup" {
+				fmt.Printf(" | unsent %d | unscheduled %d", phase.Unsent, phase.NotScheduled)
+			}
 		}
 		if phase.AverageMS != nil {
 			fmt.Printf(" | %.6f ms/op", *phase.AverageMS)
@@ -102,6 +105,9 @@ func main() {
 		}
 	}
 	fmt.Println("Report:", output)
+	for _, warning := range result.Warnings {
+		fmt.Fprintln(os.Stderr, "Warning:", warning)
+	}
 	if !result.Success {
 		fmt.Fprintln(os.Stderr, "Run failed:", result.Failure)
 		os.Exit(1)

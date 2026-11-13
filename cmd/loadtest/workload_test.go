@@ -183,3 +183,47 @@ func TestWorkloadValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestWarmupSchedulingGapsWarnAndContinue(t *testing.T) {
+	server := &testServer{values: make(map[string]string)}
+	cfg := testConfig()
+	cfg.Rate, cfg.Warmup, cfg.Duration = 100, 40*time.Millisecond, 100*time.Millisecond
+	readsBeforeMeasurement := 0
+	client := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		if server.collections == 2 && strings.HasPrefix(r.URL.Path, "/keys/") {
+			readsBeforeMeasurement++
+			if readsBeforeMeasurement > cfg.Count {
+				// Slow only warm-up; verification and measured reads remain fast.
+				time.Sleep(25 * time.Millisecond)
+			}
+		}
+		return localTransport{server}.RoundTrip(r)
+	})}
+	result := run(client, cfg)
+	if !result.Success || len(result.Phases) != 4 || len(result.Warnings) != 1 {
+		t.Fatalf("warm-up scheduling gaps must warn and continue: %q", result.Failure)
+	}
+	if result.Phases[2].Unsent == 0 || result.Phases[2].Errors != 0 || result.Phases[3].Attempts == 0 || len(result.Metrics) != 4 {
+		t.Fatal("warm-up counters and measured results must both be preserved")
+	}
+}
+
+func TestWarmupDataErrorsRemainFatal(t *testing.T) {
+	server := &testServer{values: make(map[string]string)}
+	cfg := testConfig()
+	cfg.Warmup = 10 * time.Millisecond
+	reads := 0
+	client := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		if strings.HasPrefix(r.URL.Path, "/keys/") {
+			reads++
+			if reads > cfg.Count {
+				server.corrupt = true
+			}
+		}
+		return localTransport{server}.RoundTrip(r)
+	})}
+	result := run(client, cfg)
+	if result.Success || len(result.Phases) != 3 || !strings.HasPrefix(result.Failure, "warmup:") || result.Phases[2].InvalidValue == 0 {
+		t.Fatal("incorrect warm-up values must stop the run before measured reads")
+	}
+}

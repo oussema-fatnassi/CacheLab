@@ -15,6 +15,7 @@ type report struct {
 	Metadata map[string]any   `json:"metadata"`
 	Success  bool             `json:"success"`
 	Failure  string           `json:"failure,omitempty"`
+	Warnings []string         `json:"warnings,omitempty"`
 	Phases   []phaseResult    `json:"phases"`
 	Metrics  []metricSnapshot `json:"metrics"`
 }
@@ -90,6 +91,9 @@ func run(client *http.Client, cfg config) report {
 		}
 		phase, failure := executePhase(client, cfg, entries, value, name, clock)
 		result.Phases = append(result.Phases, phase)
+		if name == "warmup" && failure == "" && (phase.Unsent > 0 || phase.NotScheduled > 0) {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("warmup: %d unsent slots and %d unscheduled slots; continuing to measured reads", phase.Unsent, phase.NotScheduled))
+		}
 		if failure != "" {
 			result.Failure = name + ": " + failure
 		}

@@ -137,6 +137,8 @@ make loadtest ARGS="-count 10000 -seed 42 -concurrency 8 -rate 1000 -warmup 2s -
 
 Un débit non nul planifie des créneaux indépendamment des réponses. Si la limite de concurrence est atteinte, le créneau est compté comme non envoyé (`unsent`), sans file d’attente illimitée. Les retards de départ sont conservés ; `delayed_over_1ms` compte ceux dépassant 1 ms. Une saturation ou un arrêt avant tous les créneaux prévus met le rapport en échec, tout en conservant les résultats partiels. Sans débit imposé, le client envoie dès qu’un worker est disponible.
 
+Pendant l’échauffement uniquement, des créneaux non envoyés ou non planifiés produisent un avertissement et restent visibles dans le rapport, sans empêcher les mesures suivantes. Les erreurs HTTP inattendues, valeurs incorrectes, pannes d’horloge ou de collecte restent bloquantes. La phase de lecture mesurée conserve la règle stricte : tout créneau manqué met l’essai en échec.
+
 Les groupes `POST`, `GET_hit` et `GET_miss` séparent compteurs, statuts et percentiles. Les `404` volontaires sont des succès ; une clé supposée présente mais absente reste une erreur. Les percentiles utilisent le rang le plus proche sur les réponses correctes uniquement, sans masquer les compteurs d’échecs. Les valeurs moyennes correspondent désormais aux latences individuelles ; `total_ms` inclut l’ordonnancement et l’attente finale des requêtes.
 
 Le débit réussi utilise toute la durée de la phase, attente finale comprise ; `offered_rps` reste le débit demandé, jamais présenté comme une mesure. `scheduling_window_ms` et `drain_ms` distinguent la fenêtre d’envoi et l’attente finale. Les mesures HTTP ne prouvent pas une complexité O(1).
