@@ -7,6 +7,7 @@ Aucun résultat enregistré pour le moment. Remplacer les tirets ci-dessous par 
 - Mode de lancement (natif ou Docker) :
 - Paramètres de journalisation / authentification (sans credentials) :
 - Volume de journaux par essai (nombre d’événements `http request`) :
+- Exports `/metrics` enregistrés avant / après chaque phase (noms des fichiers) :
 - Valeurs : 100 octets ; un seul client séquentiel.
 - Seul paramètre modifié : nombre initial de buckets, 16 contre 1 024.
 
