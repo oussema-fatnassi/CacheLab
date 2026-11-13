@@ -1,4 +1,4 @@
-// coverreport reports statement-weighted production coverage without enforcing a gate.
+// coverreport reports statement-weighted production coverage with an advisory target.
 package main
 
 import (
