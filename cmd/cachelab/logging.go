@@ -30,9 +30,10 @@ func (w *statusRecorder) Write(body []byte) (int, error) {
 
 // logRequests writes one JSON event per request with the method, the route
 // pattern, the status actually returned, the duration and a request ID that is
-// also sent back in X-Request-ID. It never logs the raw URL, the headers or the
-// body, so keys, values and the API key stay out of the logs.
-func logRequests(logger *slog.Logger, routes *http.ServeMux, next http.Handler) http.Handler {
+// also sent back in X-Request-ID, then records the request in metrics. It never
+// logs the raw URL, the headers or the body, so keys, values and the API key
+// stay out of the logs.
+func logRequests(logger *slog.Logger, metrics *serverMetrics, routes *http.ServeMux, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		requestID := rand.Text()
@@ -48,11 +49,13 @@ func logRequests(logger *slog.Logger, routes *http.ServeMux, next http.Handler) 
 			// Nothing was written: net/http sends 200.
 			status = http.StatusOK
 		}
+		elapsed := time.Since(started)
+		metrics.observe(route, status, elapsed)
 		logger.Info("http request",
 			"method", r.Method,
 			"route", route,
 			"status", status,
-			"duration_ms", float64(time.Since(started))/float64(time.Millisecond),
+			"duration_ms", float64(elapsed)/float64(time.Millisecond),
 			"request_id", requestID,
 		)
 	})

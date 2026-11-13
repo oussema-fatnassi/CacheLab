@@ -173,8 +173,8 @@ func TestHealthIsPublicAndContainsNoCacheData(t *testing.T) {
 	}
 }
 
-func TestMetricsIsProtectedBeforeExporterExists(t *testing.T) {
-	// An unregistered route must pass authentication before the mux returns 404.
+func TestMetricsIsProtected(t *testing.T) {
+	// The metrics exporter answers only with a valid key, like the CRUD routes.
 	server := authenticatedTestServer(t, &spyTable{})
 	for _, token := range []string{"", "Bearer wrong-key", "Bearer " + testAPIKey} {
 		request := httptest.NewRequest("GET", "/metrics", nil)
@@ -182,8 +182,8 @@ func TestMetricsIsProtectedBeforeExporterExists(t *testing.T) {
 		response := httptest.NewRecorder()
 		server.httpServer.Handler.ServeHTTP(response, request)
 		if token == "Bearer "+testAPIKey {
-			if response.Code != http.StatusNotFound {
-				t.Fatalf("authorized metrics status = %d; want 404 until OBS-01", response.Code)
+			if response.Code != http.StatusOK {
+				t.Fatalf("authorized metrics status = %d; want 200", response.Code)
 			}
 		} else {
 			assertUnauthorized(t, response)

@@ -150,13 +150,16 @@ func newCacheServer(config serverConfig, service *cache.CacheService) *CacheServ
 	return &CacheServer{service: service, httpServer: &http.Server{Addr: config.address, Handler: serverHandler(config, service, slog.Default())}}
 }
 
-// serverHandler wraps routing with request logging, panic recovery and authentication.
-// Logging comes first so refused and recovered requests are logged with their real status.
+// serverHandler wraps routing with request logging and metrics, panic recovery and authentication.
+// Logging comes first so refused and recovered requests are logged and counted with their real status.
 // Authentication runs before route matching or body reads, so unlisted endpoints
 // and future routes require credentials unless explicitly made public.
 func serverHandler(config serverConfig, service *cache.CacheService, logger *slog.Logger) http.Handler {
 	routes := registerRoutes(routeHandlers{create: handleCreate(service), read: handleRead(service), update: handleUpdate(service), delete: handleDelete(service)}, config.maxBodyBytes)
-	return logRequests(logger, routes, recoverPanics(logger, authenticate(routes, config.apiKey)))
+	metrics := newServerMetrics()
+	// /metrics is not in the public list of authenticate, so it requires the API key.
+	routes.Handle("GET /metrics", metrics)
+	return logRequests(logger, metrics, routes, recoverPanics(logger, authenticate(routes, config.apiKey)))
 }
 
 // Serve accepts requests on listener until shutdown or a serving error.
