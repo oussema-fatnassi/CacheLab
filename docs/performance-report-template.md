@@ -7,8 +7,9 @@ Aucun résultat enregistré pour le moment. Remplacer les tirets ci-dessous par 
 - Mode de lancement (natif ou Docker) :
 - Paramètres de journalisation / authentification (sans credentials) :
 - Volume de journaux par essai (nombre d’événements `http request`) :
-- Exports `/metrics` enregistrés avant / après chaque phase (noms des fichiers) :
-- Valeurs : 100 octets ; un seul client séquentiel.
+- Rapport JSON du client (les quatre exports `/metrics` et leurs dates figurent dans son champ `metrics`) :
+- Valeurs : 100 octets par défaut ; concurrence réellement utilisée :
+- Graine / débit proposé / échauffement / durée / pourcentage de misses :
 - Seul paramètre modifié : nombre initial de buckets, 16 contre 1 024.
 
 ## Mesures
@@ -24,7 +25,9 @@ Dupliquer les lignes pour chaque volume : 1 000, 10 000 et 100 000 clés. Effect
 | 1 024 | 1 000 | 2 | — | — | — | — | — |
 | 1 024 | 1 000 | 3 | — | — | — | — | — |
 
-Temps moyen par opération = temps total de la phase en ms / N. Le calculer uniquement pour les essais où toutes les opérations attendues réussissent. Les lectures de vérification sont exclues des lectures chronométrées.
+Le rapport JSON conserve les latences individuelles, les débits, les statuts et les P50/P95/P99 des groupes `POST`, `GET_hit` et `GET_miss`. Recopier ces éléments si le scénario avancé est activé. Le temps moyen correspond à la moyenne des latences individuelles ; avec plusieurs workers ou un débit imposé, il ne faut pas le confondre avec le temps total divisé par N. La vérification exhaustive et l’échauffement sont exclus des échantillons mesurés.
+
+Pour un débit imposé, joindre les créneaux prévus, requêtes envoyées, créneaux non envoyés, départs retardés et attente finale. Conserver les répétitions séparément ; ne jamais moyenner les percentiles pour annoncer un percentile global.
 
 ## Conclusions
 
