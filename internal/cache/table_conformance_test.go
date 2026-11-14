@@ -8,7 +8,7 @@ import (
 // register real engines here. Table is their interface :
 // newTable below calls NewHashTable(4), whose methods live in hashmap.go
 // Service spies do not belong in this registry
-// TODO: Register recursive and Go-map constructors here once implemented; each constructor must return a fresh instance for the shared suite.
+// TODO: Register the recursive constructor once implemented; each constructor must return a fresh instance for the shared suite.
 var tableConstructors = []struct {
 	name        string
 	newTable    func() Table
@@ -18,6 +18,10 @@ var tableConstructors = []struct {
 		name:        "chained",
 		newTable:    func() Table { return NewHashTable(4) },
 		newWithHash: newChainedTableWithHash,
+	},
+	{
+		name:     "go-map",
+		newTable: func() Table { return NewGoMap() },
 	},
 }
 

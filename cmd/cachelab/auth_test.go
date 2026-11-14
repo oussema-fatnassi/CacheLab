@@ -138,25 +138,36 @@ func assertUnauthorized(t *testing.T, response *httptest.ResponseRecorder) {
 }
 
 func TestAuthorizedCRUD(t *testing.T) {
-	server := authenticatedTestServer(t, cache.NewHashTable(16))
-	for _, step := range []struct {
-		method, path, body, wantBody string
-		want                         int
+	for _, engine := range []struct {
+		name     string
+		newTable func() cache.Table
 	}{
-		{"POST", "/keys", `{"key":"name","value":"Test"}`, "", 201},
-		{"GET", "/keys/name", "", `{"key":"name","value":"Test"}`, 200},
-		{"PUT", "/keys/name", `{"value":"Alice"}`, "", 200},
-		{"GET", "/keys/name", "", `{"key":"name","value":"Alice"}`, 200},
-		{"DELETE", "/keys/name", "", "", 204},
-		{"GET", "/keys/name", "", `{"error":"key not found"}`, 404},
+		{"chained", func() cache.Table { return cache.NewHashTable(16) }},
+		{"go-map", func() cache.Table { return cache.NewGoMap() }},
 	} {
-		request := httptest.NewRequest(step.method, step.path, strings.NewReader(step.body))
-		request.Header.Set("Authorization", "bEaReR "+testAPIKey)
-		response := httptest.NewRecorder()
-		server.httpServer.Handler.ServeHTTP(response, request)
-		if response.Code != step.want || strings.TrimSpace(response.Body.String()) != step.wantBody {
-			t.Fatalf("%s %s = %d %q; want %d %q", step.method, step.path, response.Code, response.Body.String(), step.want, step.wantBody)
-		}
+		t.Run(engine.name, func(t *testing.T) {
+			server := authenticatedTestServer(t, engine.newTable())
+			for _, step := range []struct {
+				method, path, body, wantBody string
+				want                         int
+			}{
+				{"POST", "/keys", `{"key":"name","value":"Test"}`, "", 201},
+				{"POST", "/keys", `{"key":"name","value":"replacement"}`, `{"error":"key already exists"}`, 409},
+				{"GET", "/keys/name", "", `{"key":"name","value":"Test"}`, 200},
+				{"PUT", "/keys/name", `{"value":"Alice"}`, "", 200},
+				{"GET", "/keys/name", "", `{"key":"name","value":"Alice"}`, 200},
+				{"DELETE", "/keys/name", "", "", 204},
+				{"GET", "/keys/name", "", `{"error":"key not found"}`, 404},
+			} {
+				request := httptest.NewRequest(step.method, step.path, strings.NewReader(step.body))
+				request.Header.Set("Authorization", "bEaReR "+testAPIKey)
+				response := httptest.NewRecorder()
+				server.httpServer.Handler.ServeHTTP(response, request)
+				if response.Code != step.want || strings.TrimSpace(response.Body.String()) != step.wantBody {
+					t.Fatalf("%s %s = %d %q; want %d %q", step.method, step.path, response.Code, response.Body.String(), step.want, step.wantBody)
+				}
+			}
+		})
 	}
 }
 
