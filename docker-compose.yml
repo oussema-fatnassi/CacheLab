@@ -5,6 +5,7 @@ services:
       PORT: ${PORT:-8080}
       # Required runtime secret; recreate the container after rotating it.
       API_KEY: ${API_KEY:?Set a private API_KEY before starting CacheLab}
+      CACHE_ENGINE: ${CACHE_ENGINE:-chained}
       CACHE_BUCKET_COUNT: ${CACHE_BUCKET_COUNT:-16}
       MAX_KEY_BYTES: ${MAX_KEY_BYTES:-256}
       MAX_VALUE_BYTES: ${MAX_VALUE_BYTES:-1048576}

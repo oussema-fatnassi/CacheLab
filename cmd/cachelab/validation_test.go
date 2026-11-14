@@ -27,12 +27,14 @@ func sendWithLimits(table cache.Table, method, path, body string) *httptest.Resp
 	return recorder
 }
 
-func TestValidationRejectsInvalidInputWithoutTouchingStore(t *testing.T) {
+type validationCase struct {
+	name, method, path, body string
+	want                     int
+}
+
+func invalidInputCases() []validationCase {
 	tooLarge := strings.Repeat("x", 64)
-	tests := []struct {
-		name, method, path, body string
-		want                     int
-	}{
+	return []validationCase{
 		{"malformed JSON", http.MethodPost, "/keys", `{"key": "new"`, http.StatusBadRequest},
 		{"data after the object", http.MethodPost, "/keys", `{"key": "new", "value": "v"}}`, http.StatusBadRequest},
 		{"wrong type", http.MethodPost, "/keys", `{"key": "new", "value": 5}`, http.StatusBadRequest},
@@ -51,7 +53,10 @@ func TestValidationRejectsInvalidInputWithoutTouchingStore(t *testing.T) {
 		{"update value one byte over", http.MethodPut, "/keys/name", `{"value": "123456"}`, http.StatusBadRequest},
 		{"update body too large", http.MethodPut, "/keys/name", `{"value": "` + tooLarge + `"}`, http.StatusRequestEntityTooLarge},
 	}
-	for _, tt := range tests {
+}
+
+func TestValidationRejectsInvalidInputWithoutTouchingStore(t *testing.T) {
+	for _, tt := range invalidInputCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			spy := &spyTable{}
 			if recorder := sendWithLimits(spy, tt.method, tt.path, tt.body); recorder.Code != tt.want {
@@ -64,18 +69,18 @@ func TestValidationRejectsInvalidInputWithoutTouchingStore(t *testing.T) {
 	}
 }
 
-func TestValidationAcceptsInputAtTheLimit(t *testing.T) {
-	tests := []struct {
-		name, method, path, body string
-		want                     int
-	}{
+func inputAtLimitCases() []validationCase {
+	return []validationCase{
 		// "éé" has 2 characters but 4 bytes: the limits count bytes.
 		{"key at the limit", http.MethodPost, "/keys", `{"key": "éé", "value": "v"}`, http.StatusCreated},
 		{"value at the limit", http.MethodPost, "/keys", `{"key": "name", "value": "12345"}`, http.StatusCreated},
 		{"empty value", http.MethodPost, "/keys", `{"key": "name", "value": ""}`, http.StatusCreated},
 		{"update value at the limit", http.MethodPut, "/keys/name", `{"value": "12345"}`, http.StatusOK},
 	}
-	for _, tt := range tests {
+}
+
+func TestValidationAcceptsInputAtTheLimit(t *testing.T) {
+	for _, tt := range inputAtLimitCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			spy := &spyTable{}
 			if recorder := sendWithLimits(spy, tt.method, tt.path, tt.body); recorder.Code != tt.want {
@@ -85,5 +90,36 @@ func TestValidationAcceptsInputAtTheLimit(t *testing.T) {
 				t.Fatalf("store called %d times; want 1", spy.calls)
 			}
 		})
+	}
+}
+
+// Reuse the spy tests' cases against real configured storage and HTTP transport.
+func runHTTPValidation(t *testing.T, client *http.Client, baseURL, apiKey string) {
+	t.Helper()
+	token := "Bearer " + apiKey
+	for _, test := range invalidInputCases() {
+		response, body := sendHTTP(t, client, baseURL, test.method, test.path, test.body, token)
+		if response.StatusCode != test.want || response.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("%s = %d %q; want JSON %d", test.name, response.StatusCode, body, test.want)
+		}
+	}
+	for _, test := range inputAtLimitCases() {
+		// Each success case starts with fresh keys, as in the original spy fixture.
+		for _, path := range []string{"/keys/name", "/keys/éé"} {
+			sendHTTP(t, client, baseURL, "DELETE", path, "", token)
+		}
+		if test.method == http.MethodPut {
+			response, body := sendHTTP(t, client, baseURL, "POST", "/keys", `{"key":"name","value":"old"}`, token)
+			if response.StatusCode != http.StatusCreated {
+				t.Fatalf("seed update fixture = %d %q", response.StatusCode, body)
+			}
+		}
+		response, body := sendHTTP(t, client, baseURL, test.method, test.path, test.body, token)
+		if response.StatusCode != test.want {
+			t.Fatalf("%s = %d %q; want %d", test.name, response.StatusCode, body, test.want)
+		}
+	}
+	for _, path := range []string{"/keys/name", "/keys/éé"} {
+		sendHTTP(t, client, baseURL, "DELETE", path, "", token)
 	}
 }

@@ -14,7 +14,10 @@ import (
 )
 
 // application holds the cache service shared by the HTTP handlers.
-type application struct{ service *cache.CacheService }
+type application struct {
+	service *cache.CacheService
+	engine  engineMetadata
+}
 
 // positiveSetting reads a positive integer from the environment, using fallback
 // when the variable is unset or empty.
@@ -31,12 +34,8 @@ func positiveSetting(name string, fallback int) (int, error) {
 }
 
 // newApplication builds an in-memory cache from environment settings.
-// Defaults are 16 buckets, 256 bytes per key, and 1 MiB per value.
+// Defaults are chained with 16 buckets, 256 bytes per key, and 1 MiB per value.
 func newApplication() (*application, error) {
-	buckets, err := positiveSetting("CACHE_BUCKET_COUNT", 16)
-	if err != nil {
-		return nil, err
-	}
 	maxKeyBytes, err := positiveSetting("MAX_KEY_BYTES", 256)
 	if err != nil {
 		return nil, err
@@ -45,8 +44,11 @@ func newApplication() (*application, error) {
 	if err != nil {
 		return nil, err
 	}
-	table := cache.NewHashTable(buckets)
-	return &application{service: cache.NewCacheService(table, maxKeyBytes, maxValueBytes)}, nil
+	table, metadata, err := newConfiguredTable()
+	if err != nil {
+		return nil, err
+	}
+	return &application{service: cache.NewCacheService(table, maxKeyBytes, maxValueBytes), engine: metadata}, nil
 }
 
 func main() {
@@ -65,6 +67,7 @@ func main() {
 		log.Fatal(err)
 	}
 	server := newCacheServer(config, app.service)
+	logExecutionMetadata(slog.Default(), app.engine)
 
 	// Ctrl+C or SIGTERM starts graceful shutdown.
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

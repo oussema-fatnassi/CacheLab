@@ -114,30 +114,34 @@ func TestServicePropagatesErrorsAndMissingKeys(t *testing.T) {
 	}
 }
 
-func TestServiceWithHashTable(t *testing.T) {
-	s := NewCacheService(NewHashTable(2), 20, 20)
-	if err := s.Create("key", "value"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Create("key", "other"); !errors.Is(err, ErrKeyExists) {
-		t.Fatalf("duplicate create: %v", err)
-	}
-	if err := s.Update("key", "new"); err != nil {
-		t.Fatal(err)
-	}
-	if value, err := s.Read("key"); err != nil || value != "new" {
-		t.Fatalf("read: value=%q err=%v", value, err)
-	}
-	if err := s.Delete("key"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.Read("key"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("read deleted key: %v", err)
-	}
-	if err := s.Update("key", "new"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("update deleted key: %v", err)
-	}
-	if err := s.Delete("key"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("delete missing key: %v", err)
+func TestServiceWithTable(t *testing.T) {
+	for _, engine := range tableConstructors {
+		t.Run(engine.name, func(t *testing.T) {
+			s := NewCacheService(engine.newTable(), 20, 20)
+			if err := s.Create("key", "value"); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Create("key", "other"); !errors.Is(err, ErrKeyExists) {
+				t.Fatalf("duplicate create: %v", err)
+			}
+			if err := s.Update("key", "new"); err != nil {
+				t.Fatal(err)
+			}
+			if value, err := s.Read("key"); err != nil || value != "new" {
+				t.Fatalf("read: value=%q err=%v", value, err)
+			}
+			if err := s.Delete("key"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Read("key"); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("read deleted key: %v", err)
+			}
+			if err := s.Update("key", "new"); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("update deleted key: %v", err)
+			}
+			if err := s.Delete("key"); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("delete missing key: %v", err)
+			}
+		})
 	}
 }

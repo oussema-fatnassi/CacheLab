@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/oussema-fatnassi/CacheLab/internal/cache"
 )
@@ -138,47 +139,119 @@ func assertUnauthorized(t *testing.T, response *httptest.ResponseRecorder) {
 }
 
 func TestAuthorizedCRUD(t *testing.T) {
-	for _, engine := range []struct {
-		name     string
-		newTable func() cache.Table
-	}{
-		{"chained", func() cache.Table { return cache.NewHashTable(16) }},
-		{"go-map", func() cache.Table { return cache.NewGoMap() }},
-		{"recursive", func() cache.Table { return cache.NewRecursiveTable() }},
-		{"recursive-configured", func() cache.Table {
-			table, err := cache.NewRecursiveTableWithConfig(cache.RecursiveConfig{
-				BranchCount: 4, MaxDepth: 2,
-				Hash: func(string) uint64 { return 7 },
-			})
+	for _, engine := range []string{"chained", "recursive", "go-map"} {
+		t.Run(engine, func(t *testing.T) {
+			for _, setting := range serverTestEnvironment(engine, "8080") {
+				name, value, _ := strings.Cut(setting, "=")
+				t.Setenv(name, value)
+			}
+			app, err := newApplication()
 			if err != nil {
 				t.Fatal(err)
 			}
-			return table
-		}},
-	} {
-		t.Run(engine.name, func(t *testing.T) {
-			server := authenticatedTestServer(t, engine.newTable())
-			for _, step := range []struct {
-				method, path, body, wantBody string
-				want                         int
-			}{
-				{"POST", "/keys", `{"key":"name","value":"Test"}`, "", 201},
-				{"POST", "/keys", `{"key":"name","value":"replacement"}`, `{"error":"key already exists"}`, 409},
-				{"GET", "/keys/name", "", `{"key":"name","value":"Test"}`, 200},
-				{"PUT", "/keys/name", `{"value":"Alice"}`, "", 200},
-				{"GET", "/keys/name", "", `{"key":"name","value":"Alice"}`, 200},
-				{"DELETE", "/keys/name", "", "", 204},
-				{"GET", "/keys/name", "", `{"error":"key not found"}`, 404},
-			} {
-				request := httptest.NewRequest(step.method, step.path, strings.NewReader(step.body))
-				request.Header.Set("Authorization", "bEaReR "+testAPIKey)
-				response := httptest.NewRecorder()
-				server.httpServer.Handler.ServeHTTP(response, request)
-				if response.Code != step.want || strings.TrimSpace(response.Body.String()) != step.wantBody {
-					t.Fatalf("%s %s = %d %q; want %d %q", step.method, step.path, response.Code, response.Body.String(), step.want, step.wantBody)
-				}
+			config, err := loadServerConfig()
+			if err != nil {
+				t.Fatal(err)
 			}
+			server := httptest.NewServer(newCacheServer(config, app.service).httpServer.Handler)
+			t.Cleanup(server.Close)
+			client := server.Client()
+			client.Timeout = 2 * time.Second
+			runConfiguredHTTPConformance(t, client, server.URL, testAPIKey)
 		})
+	}
+	t.Run("recursive-configured", func(t *testing.T) {
+		table, err := cache.NewRecursiveTableWithConfig(cache.RecursiveConfig{
+			BranchCount: 4, MaxDepth: 2, Hash: func(string) uint64 { return 7 },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		server := httptest.NewServer(authenticatedTestServer(t, table).httpServer.Handler)
+		t.Cleanup(server.Close)
+		client := server.Client()
+		client.Timeout = 2 * time.Second
+		runAuthorizedCRUD(t, client, server.URL, testAPIKey)
+	})
+}
+
+// The same small, explicit limits are used in-process and in the real binary.
+func serverTestEnvironment(engine, port string) []string {
+	return []string{
+		"CACHE_ENGINE=" + engine, "CACHE_BUCKET_COUNT=2", "API_KEY=" + testAPIKey,
+		"MAX_KEY_BYTES=4", "MAX_VALUE_BYTES=5", "MAX_BODY_BYTES=64",
+		"PORT=" + port, "SHUTDOWN_TIMEOUT=1s",
+	}
+}
+
+// sendHTTP consumes and closes each response; callers can inspect status and headers.
+func sendHTTP(t *testing.T, client *http.Client, baseURL, method, path, body, token string) (*http.Response, string) {
+	t.Helper()
+	request, err := http.NewRequest(method, baseURL+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "" {
+		request.Header.Set("Authorization", token)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(response.Body)
+	closeErr := response.Body.Close()
+	if err != nil || closeErr != nil {
+		t.Fatalf("reading response: %v; closing response: %v", err, closeErr)
+	}
+	return response, strings.TrimSpace(string(data))
+}
+
+func runAuthorizedCRUD(t *testing.T, client *http.Client, baseURL, apiKey string) {
+	t.Helper()
+	for _, step := range []struct {
+		method, path, body, wantBody string
+		want                         int
+	}{
+		{"POST", "/keys", `{"key":"name","value":"Test"}`, "", 201},
+		{"POST", "/keys", `{"key":"name","value":"other"}`, `{"error":"key already exists"}`, 409},
+		{"GET", "/keys/name", "", `{"key":"name","value":"Test"}`, 200},
+		{"PUT", "/keys/name", `{"value":"Alice"}`, "", 200},
+		{"GET", "/keys/name", "", `{"key":"name","value":"Alice"}`, 200},
+		{"DELETE", "/keys/name", "", "", 204},
+		{"GET", "/keys/name", "", `{"error":"key not found"}`, 404},
+	} {
+		response, body := sendHTTP(t, client, baseURL, step.method, step.path, step.body, "bEaReR "+apiKey)
+		if response.StatusCode != step.want || body != step.wantBody {
+			t.Fatalf("%s %s = %d %q; want %d %q", step.method, step.path, response.StatusCode, body, step.want, step.wantBody)
+		}
+		if response.Header.Get("X-Request-ID") == "" {
+			t.Fatal("missing request logging middleware")
+		}
+	}
+}
+
+func runConfiguredHTTPConformance(t *testing.T, client *http.Client, baseURL, apiKey string) {
+	t.Helper()
+	runAuthorizedCRUD(t, client, baseURL, apiKey)
+	runHTTPValidation(t, client, baseURL, apiKey)
+	for _, step := range []struct{ method, path, body, token string }{
+		{"GET", "/keys/name", "", ""},
+		{"GET", "/metrics", "", ""},
+		{"GET", "/metrics", "", "Bearer wrong-key"},
+		{"POST", "/keys", strings.Repeat("x", 65), ""},
+	} {
+		response, body := sendHTTP(t, client, baseURL, step.method, step.path, step.body, step.token)
+		if response.StatusCode != 401 || body != `{"error":"unauthorized"}` || response.Header.Get("WWW-Authenticate") != "Bearer" {
+			t.Fatalf("unauthenticated %s %s = %d %q", step.method, step.path, response.StatusCode, body)
+		}
+	}
+	response, body := sendHTTP(t, client, baseURL, "GET", "/health", "", "")
+	if response.StatusCode != 200 || body != `{"status":"ok"}` {
+		t.Fatalf("health = %d %q", response.StatusCode, body)
+	}
+	response, body = sendHTTP(t, client, baseURL, "GET", "/metrics", "", "Bearer "+apiKey)
+	if response.StatusCode != 200 || !strings.Contains(body, "cachelab_cache_hits_total") {
+		t.Fatalf("metrics = %d %q", response.StatusCode, body)
 	}
 }
 
