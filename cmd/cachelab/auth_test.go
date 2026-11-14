@@ -144,6 +144,17 @@ func TestAuthorizedCRUD(t *testing.T) {
 	}{
 		{"chained", func() cache.Table { return cache.NewHashTable(16) }},
 		{"go-map", func() cache.Table { return cache.NewGoMap() }},
+		{"recursive", func() cache.Table { return cache.NewRecursiveTable() }},
+		{"recursive-configured", func() cache.Table {
+			table, err := cache.NewRecursiveTableWithConfig(cache.RecursiveConfig{
+				BranchCount: 4, MaxDepth: 2,
+				Hash: func(string) uint64 { return 7 },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return table
+		}},
 	} {
 		t.Run(engine.name, func(t *testing.T) {
 			server := authenticatedTestServer(t, engine.newTable())
