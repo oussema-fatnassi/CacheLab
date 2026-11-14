@@ -59,3 +59,50 @@ Comparer la même opération et la même taille de jeu de données. Une configur
 Le scénario avancé et ses options sont décrits dans le README. Le test simple reste le point de départ ; n’activer concurrence, débit, échauffement et durée qu’en conservant les mêmes paramètres entre configurations. Les exports donnent des mesures mémoire du processus, pas le coût exact du cache. Aucun résultat ne prouve à lui seul une complexité Big O.
 
 Valider ces paramètres simplifiés avec l’équipe avant de les utiliser comme périmètre final du ticket.
+
+
+## 5. Extension PERF-01-B — Trois moteurs
+
+Version **B.1 — 14 novembre 2026** · [Ticket CL-141](https://oussemafatnassi.atlassian.net/browse/CL-141).
+
+Les sections précédentes conservent l’expérience A (16/1 024 buckets) et les options du client existant. Pour la comparaison des moteurs, appliquer les paramètres ci-dessous : ils remplacent les réglages temporels de l’étape A, sans modifier ses résultats historiques.
+
+| Paramètre | Comparaison B.1 |
+| --- | --- |
+| Moteurs et volumes | `chained`, `recursive`, `go-map` ; 1 000, 10 000, 100 000 et 1 000 000 clés |
+| Données | Clés ASCII de 24 octets (`bench-` + indice sur 18 chiffres), valeurs de 100 caractères `x`, remplacés par `y` après modification ; graine 42 |
+| Opérations | N par phase ; lectures uniformes avec remise, créations distinctes dans l’ordre |
+| Concurrence et débit | 1 worker, sans débit imposé ; série P99 séparée à 8 workers |
+| Répétitions | 3 ; ordre chained/recursive/go-map, puis recursive/go-map/chained, puis go-map/chained/recursive |
+| Échauffement | N lectures présentes hors mesure ; 0 avant la création à froid |
+
+Utiliser le même poste, le même binaire serveur/image et le même client, avec **un moteur mesuré à la fois**. Garder contrat CRUD, `sync.Mutex`, limites, authentification, logs et métriques identiques. Create refuse un doublon ; Update ne crée pas une clé absente. Fixer FNV-1a pour les deux moteurs custom ; Go map conserve son hash interne.
+
+Réglages : chained commence à 16 buckets, seuil 0,75, croissance ×2 ; recursive utilise 16 branches, profondeur maximale 16 et seuil de subdivision consigné ; Go map ne reçoit pas de capacité explicite. Noter les fonctionnalités actives : TTL/éviction/budget mémoire absents ou désactivés pour le socle initial, puis réglages communs pour la campagne finale.
+
+### Déroulement complémentaire
+
+Démarrer à vide et générer les données hors mesure. Mesurer N créations, vérifier les N valeurs, effectuer N lectures d’échauffement, puis mesurer séparément N lectures présentes, N lectures absentes, N modifications et N suppressions. Vérifier les valeurs après modification et l’absence après suppression, hors chronométrage. Pour une opération indépendante, préparer un nouveau jeu équivalent de N clés avant vérification et échauffement. Les absences utilisent `miss--` au lieu de `bench-`.
+
+Ajouter deux profils de **N opérations au total**, après préchargement, vérification et N lectures d’échauffement :
+
+| Profil | Création | Lecture présente | Lecture absente | Modification | Suppression |
+| --- | --- | --- | --- | --- | --- |
+| Équilibré | 20 % | 30 % | 10 % | 20 % | 20 % |
+| Écritures majoritaires | 30 % | 10 % | 0 % | 30 % | 30 % |
+
+Par cycle de 10 : le profil équilibré crée 2 clés, lit 3 présentes et 1 absente, modifie 2 préchargées puis supprime les 2 nouvelles ; le profil écritures crée 3 clés, les modifie, les supprime puis lit 1 préchargée. Réserver des clés distinctes aux lectures et modifications du jeu initial. Les nouvelles clés (`new---` + indice sur 18 chiffres) sont uniques par cycle. Si une série concurrente est ajoutée, chaque worker possède ses clés modifiables et respecte cet ordre. Vérifier l’état final hors mesure.
+
+### Mesures et limites
+
+- Séparer benchmarks directs (N opérations, ns/op, B/op, allocs/op) et HTTP (latences, débit, erreurs). Préparation, préchargement, vérification et échauffement sont hors mesure ; Create mesure son propre chargement. Tester avec `-race`, mesurer sans `-race`.
+- Relever CPU et mémoire du serveur/client à vide, après chargement, après échauffement, avant/après les phases et après suppression. Même outil et mêmes collectes `/metrics`, hors chronométrage. Conserver deltas CPU, durée de phase et allocations directes. Ne pas additionner HeapAlloc, Sys et RSS ni les assimiler à la taille du cache ; N × 124 octets ne représente que les données. Garder le GC normal et consigner les réglages Go/Docker.
+- Cible locale : **P99 GET présent < 10 ms**, pour chaque moteur/N, avec 8 workers, N clés préchargées et vérifiées, N lectures d’échauffement puis N lectures présentes mesurées, sans débit imposé. Les trois essais doivent réussir sans erreur et respecter la cible. Signaler la saturation du client ; tout niveau non exécuté reste non vérifié.
+- Comparer au moins deux hashes 64 bits documentés dans une campagne séparée, sur les moteurs custom uniquement : même structure et paramètres, seul le hash change, trois répétitions en alternant les hashes. Séparer hash seul, moteur direct et HTTP.
+- Conserver toutes les répétitions, médiane/min/max, données brutes, versions serveur/client, configuration et limites dans le modèle de rapport. Séparer les machines et signaler toute mesure manquante. L’analyse définit n, L, charge, profondeur d et candidats terminaux c ; distinguer moyenne, pire cas et amorti, avec collisions, croissance et sources Go. Une courbe ne prouve pas O(1).
+
+Les campagnes sont bornées en opérations : **aucune durée minimale ni endurance**. Les timeouts techniques et règles de TTL restent applicables. Versionner tout changement avant les essais et identifier les fonctions ajoutées pour la campagne finale.
+
+Ce ticket prépare le protocole : l’extension du client relève de [QA-02-B / CL-146](https://oussemafatnassi.atlassian.net/browse/CL-146), la sélection des moteurs et les tests des vrais serveurs/redémarrages de [CL-158](https://oussemafatnassi.atlassian.net/browse/CL-158). Le client actuel ne réalise pas encore toute l’étape B.
+
+Sources : [protocole Confluence](https://oussemafatnassi.atlassian.net/wiki/pages/viewpage.action?pageId=26804225) et [modèle Confluence](https://oussemafatnassi.atlassian.net/wiki/pages/viewpage.action?pageId=26738690), versions 5.

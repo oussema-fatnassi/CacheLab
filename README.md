@@ -138,6 +138,8 @@ go test -v -count=1 ./cmd/cachelab -run TestCacheIsEmptyAfterProcessRestart
 
 Le [protocole PERF-01-A](docs/performance-protocol.md) propose une comparaison simple : insérer puis lire 1 000, 10 000 et 100 000 clés, avec 16 puis 1 024 buckets initiaux. Le [modèle de rapport](docs/performance-report-template.md) permet de noter les temps et les erreurs.
 
+Les deux documents conservent l’étape A et ajoutent une section **PERF-01-B** : comparaison locale des trois moteurs jusqu’à 1 000 000 clés, opérations CRUD, profils mixtes et mesures P99/CPU/mémoire, sans durée imposée. Les commandes ci-dessous restent celles du client existant ; son extension relève de QA-02-B et la sélection des moteurs de CL-158.
+
 Le client automatisé QA-02-A se lance depuis la racine, avec le serveur démarré dans un autre terminal :
 
 ```bash

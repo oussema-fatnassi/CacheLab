@@ -39,3 +39,30 @@ Pour un débit imposé, joindre les créneaux prévus, requêtes envoyées, cré
 Pour obtenir la médiane, trier les trois durées et retenir celle du milieu.
 
 Ces mesures concernent les opérations HTTP complètes sur cette machine. Elles ne constituent pas une preuve de complexité O(1).
+
+
+## Extension PERF-01-B — Résultats des trois moteurs
+
+Protocole **B.1 — 14 novembre 2026** : [paramètres de l’étape B](performance-protocol.md#5-extension-perf-01-b--trois-moteurs). La grille précédente reste dédiée à l’étape A ; ne pas mélanger les deux expériences.
+
+Compléter le contexte existant avec : moteur réellement sélectionné, hash, verrou, capacité initiale, versions Go serveur/client séparées, fonctionnalités actives, réglages Go/Docker, nombres d’opérations par phase et échauffement en opérations. Joindre les preuves de correction, authentification et redémarrage. Mesurer un seul moteur à la fois sur le même poste.
+
+Dupliquer les lignes pour chaque moteur, volume (jusqu’à 1 000 000 clés), scénario et trois répétitions. Séparer création, lecture présente, lecture absente, modification et suppression, y compris dans les profils mixtes.
+
+| Moteur / N / scénario / essai | Opération | Prévues / réussies / erreurs | Direct : ns/op, B/op, allocs/op | HTTP : total, P50/P95/P99, débit | Fichier brut |
+| --- | --- | --- | --- | --- | --- |
+| À renseigner | — | — | — | — | — |
+
+| Point de collecte / moteur / N / essai | HeapAlloc / Sys serveur | RSS serveur / client | Delta CPU serveur / client | Preuve |
+| --- | --- | --- | --- | --- |
+| À renseigner | — | — | — | — |
+
+Indiquer unités, outils et durée de phase pour le CPU. Relever à vide, après chargement, après échauffement, avant/après les phases et après suppression ; ne pas additionner les différentes mesures de mémoire.
+
+Compléter les conclusions avec :
+
+- Les trois P99 du test GET présent à 8 workers et le verdict < 10 ms, selon les conditions du protocole.
+- La comparaison séparée des hashes custom et l’explication de complexité avec n/L/charge/d/c, moyenne, pire cas, amorti et sources Go.
+- Les niveaux non exécutés, erreurs, ressources non mesurées, limites du générateur et changements depuis la première campagne. Un cas absent reste « non vérifié » ; conserver aussi les essais en échec.
+
+Aucune durée minimale ni endurance n’est attendue. Le client doit encore être étendu dans QA-02-B pour produire l’ensemble de ces mesures.
