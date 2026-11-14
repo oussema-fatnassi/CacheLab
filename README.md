@@ -111,6 +111,10 @@ make cover
 
 La [fiche QA-05](docs/ci-quality-gate.md) précise l’objectif indicatif, les cas avec et sans avertissement et la protection de branche vérifiée.
 
+### Recette du premier jalon
+
+La [fiche QA-04-S2](docs/acceptance-milestone-1.md) donne la liste minimale des contrôles et des trois campagnes à exécuter avec le client existant.
+
 ## Cache vide après redémarrage
 
 CacheLab garde les données uniquement en mémoire : tout arrêt du serveur les efface (`Ctrl+C` sur `make server`, arrêt du processus, `docker compose restart` ou recréation du conteneur). Au redémarrage, le cache est **froid** : toutes les clés écrites avant renvoient `404`, même avec une clé API valide, tandis que les nouvelles entrées fonctionnent normalement.
